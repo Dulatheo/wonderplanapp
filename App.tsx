@@ -5,7 +5,7 @@
  * @format
  */
 
-import React, {useState} from 'react';
+import {useState, useEffect} from 'react';
 import {
   View,
   Text,
@@ -19,18 +19,33 @@ import {
 import {Amplify} from 'aws-amplify';
 import outputs from './amplify_outputs.json';
 
+import type {Schema} from './amplify/data/resource';
+import {generateClient} from 'aws-amplify/data';
+
+const client = generateClient<Schema>();
+
 Amplify.configure(outputs);
 
 const MainApp = () => {
   const [text, setText] = useState('');
-  const [items, setItems] = useState<string[]>([]);
+  const [todos, setTodos] = useState<Schema['Todo']['type'][]>([]);
 
-  const addItem = () => {
-    if (text.trim()) {
-      setItems([...items, text]);
-      setText('');
-    }
+  const addItem = async () => {
+    await client.models.Todo.create({
+      content: text,
+    });
+
+    fetchTodos();
   };
+
+  const fetchTodos = async () => {
+    const {data: items, errors} = await client.models.Todo.list();
+    setTodos(items);
+  };
+
+  useEffect(() => {
+    fetchTodos();
+  }, []);
 
   return (
     <View style={[styles.container]}>
@@ -49,10 +64,10 @@ const MainApp = () => {
       </View>
 
       <FlatList
-        data={items}
+        data={todos}
         renderItem={({item}) => (
           <View style={styles.listItem}>
-            <Text>{item}</Text>
+            <Text>{item.content}</Text>
           </View>
         )}
         keyExtractor={(_, index) => index.toString()}
