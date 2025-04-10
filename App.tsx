@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  Alert,
 } from 'react-native';
 
 import {Amplify} from 'aws-amplify';
@@ -34,8 +35,6 @@ const MainApp = () => {
     await client.models.Todo.create({
       content: text,
     });
-
-    fetchTodos();
   };
 
   const fetchTodos = async () => {
@@ -44,8 +43,36 @@ const MainApp = () => {
   };
 
   useEffect(() => {
-    fetchTodos();
+    const subscription = client.models.Todo.observeQuery().subscribe({
+      next: ({items}) => {
+        setTodos([...items]);
+      },
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const handleDelete = (item: Schema['Todo']['type']) => {
+    Alert.alert('Delete', 'Delete?', [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Delete',
+        onPress: () => deleteItem(item),
+        style: 'destructive',
+      },
+    ]);
+  };
+
+  const deleteItem = async (item: Schema['Todo']['type']) => {
+    try {
+      await client.models.Todo.delete(item);
+    } catch (error) {
+      console.error('Error deleting item:', error);
+    }
+  };
 
   return (
     <View style={[styles.container]}>
@@ -66,9 +93,11 @@ const MainApp = () => {
       <FlatList
         data={todos}
         renderItem={({item}) => (
-          <View style={styles.listItem}>
+          <TouchableOpacity
+            style={styles.listItem}
+            onPress={() => handleDelete(item)}>
             <Text>{item.content}</Text>
-          </View>
+          </TouchableOpacity>
         )}
         keyExtractor={(_, index) => index.toString()}
       />
