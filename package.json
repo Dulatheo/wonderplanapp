@@ -12,8 +12,12 @@
   "dependencies": {
     "@aws-amplify/react-native": "^1.1.7",
     "@aws-amplify/ui-react-native": "^2.5.1",
-    "@react-native-async-storage/async-storage": "^2.1.2",
+    "@react-native-async-storage/async-storage": "^1.21.0",
     "@react-native-community/netinfo": "^11.4.1",
+    "@tanstack/query-async-storage-persister": "^5.74.3",
+    "@tanstack/query-persist-client-core": "^5.0.0",
+    "@tanstack/react-query": "^5.74.3",
+    "@tanstack/react-query-persist-client": "^5.74.3",
     "aws-amplify": "^6.14.1",
     "react": "18.3.1",
     "react-native": "0.77.0",
@@ -51,5 +55,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "resolutions": {
+    "@tanstack/query-persist-client-core": "5.0.0"
   }
 }
