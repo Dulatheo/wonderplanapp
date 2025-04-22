@@ -33,16 +33,182 @@ import outputs from './amplify_outputs.json';
 
 import type {Schema} from './amplify/data/resource';
 import {generateClient} from 'aws-amplify/data';
+import SQLite from 'react-native-sqlite-storage';
+import NetInfo from '@react-native-community/netinfo';
 
+let isDbInitialized = false;
+let isOnline = true;
+
+// Initialize Amplify
 const client = generateClient<Schema>();
-
 Amplify.configure(outputs);
 
-// Query Client setup with persistence
+// SQLite database setup
+const db = SQLite.openDatabase(
+  {name: 'todo.db', location: 'default'},
+  () => console.log('Database opened'),
+  error => console.error('Database error:', error),
+);
+
+// Type definitions
+type LocalTodo = {
+  id: string;
+  content: string;
+  status: 'pending' | 'synced' | 'deleted';
+  server_id?: string;
+  created_at: number;
+};
+
+// Initialize database table
+const initializeDatabase = async () => {
+  return new Promise<void>(async (resolve, reject) => {
+    try {
+      // First create the table
+      await new Promise<void>((resolveCreate, rejectCreate) => {
+        db.transaction(tx => {
+          tx.executeSql(
+            `CREATE TABLE IF NOT EXISTS todos (
+              id TEXT PRIMARY KEY,
+              content TEXT,
+              status TEXT DEFAULT 'pending',
+              server_id TEXT,
+              created_at INTEGER
+            );`,
+            [],
+            () => resolveCreate(),
+            error => rejectCreate(error),
+          );
+        });
+      });
+
+      // Then perform initial sync
+      await performInitialSync();
+      isDbInitialized = true;
+      resolve();
+    } catch (error) {
+      console.error('Database initialization failed:', error);
+      reject(error);
+    }
+  });
+};
+
+const setupNetworkListener = () => {
+  NetInfo.addEventListener(state => {
+    isOnline = state.isConnected ?? false;
+    if (isOnline && isDbInitialized) {
+      syncToAmplify();
+    }
+  });
+};
+
+const performInitialSync = async () => {
+  try {
+    // Fetch from Amplify
+    const {data: remoteItems} = await client.models.Todo.list();
+
+    // Insert into local DB
+    db.transaction(tx => {
+      remoteItems.forEach(item => {
+        tx.executeSql(
+          `INSERT OR REPLACE INTO todos 
+          (id, content, status, server_id, created_at) 
+          VALUES (?, ?, ?, ?, ?)`,
+          [
+            `local-${item.id}`, // Generate local ID
+            item.content,
+            'synced',
+            item.id,
+            Date.now(),
+          ],
+        );
+      });
+    });
+    queryClient.invalidateQueries({queryKey: ['todos']});
+  } catch (error) {
+    console.error('Initial sync failed:', error);
+  }
+};
+
+// Sync function
+const syncToAmplify = async () => {
+  if (!isOnline || !isDbInitialized) return;
+  try {
+    // Sync pending additions
+    const pendingAdditions = await new Promise<LocalTodo[]>(
+      (resolve, reject) => {
+        db.transaction(tx => {
+          tx.executeSql(
+            'SELECT * FROM todos WHERE status = "pending"',
+            [],
+            (_, result) => resolve(result.rows.raw()),
+            error => reject(error),
+          );
+        });
+      },
+    );
+
+    for (const localItem of pendingAdditions) {
+      try {
+        const {data: serverItem} = await client.models.Todo.create({
+          content: localItem.content,
+        });
+
+        db.transaction(tx => {
+          tx.executeSql(
+            'UPDATE todos SET status = "synced", server_id = ? WHERE id = ?',
+            [serverItem?.id, localItem.id],
+          );
+        });
+        queryClient.invalidateQueries({queryKey: ['todos']});
+      } catch (error) {
+        console.error('Sync addition error:', error);
+      }
+    }
+
+    // Sync deletions
+    const pendingDeletions = await new Promise<LocalTodo[]>(
+      (resolve, reject) => {
+        db.transaction(tx => {
+          tx.executeSql(
+            'SELECT * FROM todos WHERE status = "deleted" AND server_id IS NOT NULL',
+            [],
+            (_, result) => resolve(result.rows.raw()),
+            error => reject(error),
+          );
+        });
+      },
+    );
+
+    for (const localItem of pendingDeletions) {
+      try {
+        // Add type guard to ensure server_id exists
+        if (localItem.server_id) {
+          await client.models.Todo.delete({id: localItem.server_id});
+
+          db.transaction(tx => {
+            tx.executeSql('DELETE FROM todos WHERE id = ?', [localItem.id]);
+          });
+        } else {
+          // Handle items that somehow made it to deletions without server_id
+          console.warn('No server_id for deletion:', localItem);
+          db.transaction(tx => {
+            tx.executeSql('DELETE FROM todos WHERE id = ?', [localItem.id]);
+          });
+        }
+      } catch (error) {
+        console.error('Sync deletion error:', error);
+      }
+    }
+  } catch (error) {
+    console.error('Sync failed:', error);
+  }
+};
+
+// Query Client setup
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours cache
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours
     },
   },
 });
@@ -55,85 +221,113 @@ const MainApp = () => {
   const [text, setText] = useState('');
   const queryClient = useQueryClient();
 
-  // Fetch initial todos and set up real-time subscription
-  const {data: todos = []} = useQuery({
+  // Load todos from local DB
+  const {data: todos = []} = useQuery<LocalTodo[]>({
     queryKey: ['todos'],
-    queryFn: async () => {
-      const {data: items} = await client.models.Todo.list();
-      return items;
-    },
+    queryFn: () =>
+      new Promise((resolve, reject) => {
+        db.transaction(tx => {
+          tx.executeSql(
+            'SELECT * FROM todos WHERE status != "deleted" ORDER BY created_at DESC',
+            [],
+            (_, result) => resolve(result.rows.raw()),
+            (_, error) => reject(error),
+          );
+        });
+      }),
   });
 
-  // Realtime subscription
-  useEffect(() => {
-    const subscription = client.models.Todo.observeQuery().subscribe({
-      next: ({items}) => {
-        // Update React Query cache with real-time changes
-        queryClient.setQueryData(['todos'], items);
-      },
-    });
-    return () => subscription.unsubscribe();
-  }, [queryClient]);
-
-  // Add mutation with optimistic update
+  // Add todo mutation
   const addMutation = useMutation({
-    mutationFn: (content: string) => client.models.Todo.create({content}),
-    onMutate: async content => {
-      await queryClient.cancelQueries({queryKey: ['todos']});
-      const previousTodos = queryClient.getQueryData(['todos']);
+    mutationFn: async (content: string) => {
+      const newItem: LocalTodo = {
+        id: `local-${Date.now()}`,
+        content,
+        status: 'pending',
+        created_at: Date.now(),
+      };
 
-      queryClient.setQueryData(
-        ['todos'],
-        (old: Schema['Todo']['type'][] | undefined) => [
-          ...(old || []),
-          {id: `temp-${Date.now()}`, content, _version: 0}, // Temporary ID for optimistic update
-        ],
-      );
-
-      return {previousTodos};
+      await new Promise((resolve, reject) => {
+        db.transaction(tx => {
+          tx.executeSql(
+            'INSERT INTO todos (id, content, status, created_at) VALUES (?, ?, ?, ?)',
+            [newItem.id, newItem.content, newItem.status, newItem.created_at],
+            (_, result) => resolve(result),
+            (_, error) => reject(error),
+          );
+        });
+      });
+      return newItem;
     },
-    onError: (err, variables, context) => {
-      queryClient.setQueryData(['todos'], context?.previousTodos);
-    },
-    onSettled: () => {
+    onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['todos']});
+      syncToAmplify();
     },
-    retry: 3,
   });
 
-  // Delete mutation with optimistic update
+  // Delete todo mutation
   const deleteMutation = useMutation({
-    mutationFn: (item: Schema['Todo']['type']) =>
-      client.models.Todo.delete(item),
-    onMutate: async item => {
-      await queryClient.cancelQueries({queryKey: ['todos']});
-      const previousTodos = queryClient.getQueryData(['todos']);
-
-      queryClient.setQueryData(
-        ['todos'],
-        (old: Schema['Todo']['type'][] | undefined) =>
-          old?.filter(t => t.id !== item.id) || [],
-      );
-
-      return {previousTodos};
+    mutationFn: async (item: LocalTodo) => {
+      await new Promise((resolve, reject) => {
+        db.transaction(tx => {
+          tx.executeSql(
+            item.server_id
+              ? 'UPDATE todos SET status = "deleted" WHERE id = ?'
+              : 'DELETE FROM todos WHERE id = ?',
+            [item.id],
+            (_, result) => resolve(result),
+            (_, error) => reject(error),
+          );
+        });
+      });
+      return item;
     },
-    onError: (err, variables, context) => {
-      queryClient.setQueryData(['todos'], context?.previousTodos);
-    },
-    onSettled: () => {
+    onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['todos']});
+      syncToAmplify();
     },
-    retry: 3,
   });
 
-  const addItem = async () => {
+  useEffect(() => {
+    let unsubscribe: () => void;
+
+    const init = async () => {
+      try {
+        await initializeDatabase();
+
+        // Correct network listener setup
+        unsubscribe = NetInfo.addEventListener(state => {
+          isOnline = state.isConnected ?? false;
+          if (isOnline && isDbInitialized) {
+            syncToAmplify();
+          }
+        });
+
+        await syncToAmplify();
+      } catch (error) {
+        console.error('Initialization error:', error);
+        Alert.alert('Error', 'Failed to initialize database');
+      }
+    };
+
+    init();
+
+    // Correct cleanup
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  const addItem = () => {
     if (text.trim()) {
       addMutation.mutate(text.trim());
       setText('');
     }
   };
 
-  const handleDelete = (item: Schema['Todo']['type']) => {
+  const handleDelete = (item: LocalTodo) => {
     Alert.alert('Delete', 'Are you sure you want to delete this item?', [
       {text: 'Cancel', style: 'cancel'},
       {
@@ -166,9 +360,11 @@ const MainApp = () => {
             style={styles.listItem}
             onPress={() => handleDelete(item)}>
             <Text>{item.content}</Text>
-            {/* Show temporary indicator for optimistic updates */}
-            {item.id.startsWith('temp-') && (
-              <Text style={styles.tempIndicator}>Syncing...</Text>
+            {item.status === 'pending' && (
+              <Text style={styles.pendingText}>Pending Sync</Text>
+            )}
+            {item.status === 'synced' && (
+              <Text style={styles.syncedText}>Synced</Text>
             )}
           </TouchableOpacity>
         )}
@@ -183,8 +379,8 @@ export default function App() {
     <PersistQueryClientProvider
       client={queryClient}
       persistOptions={{
-        persister: asyncStoragePersister, // Передаем persister внутри persistOptions
-        maxAge: 1000 * 60 * 60 * 24, // 24 часа
+        persister: asyncStoragePersister,
+        maxAge: 1000 * 60 * 60 * 24, // 24 hours
       }}>
       <MainApp />
     </PersistQueryClientProvider>
@@ -235,5 +431,13 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     fontStyle: 'italic',
+  },
+  pendingText: {
+    color: '#ffc107',
+    fontSize: 12,
+  },
+  syncedText: {
+    color: '#28a745',
+    fontSize: 12,
   },
 });

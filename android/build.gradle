@@ -10,6 +10,7 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        maven { url "$rootDir/../node_modules/react-native-sqlite-storage/android/maven" }
     }
     dependencies {
         classpath("com.android.tools.build:gradle")
