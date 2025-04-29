@@ -51,38 +51,75 @@ const db = SQLite.openDatabase(
 );
 
 // Type definitions
+type Transaction = {
+  id: string;
+  type: 'create' | 'update' | 'delete';
+  entityType: 'todo';
+  entityId: string;
+  payload: string;
+  status: 'pending' | 'committed' | 'failed';
+  retries: number;
+  createdAt: number;
+};
+
 type LocalTodo = {
   id: string;
   content: string;
   status: 'pending' | 'synced' | 'deleted';
   server_id?: string;
   created_at: number;
+  version: number;
 };
 
 // Initialize database table
 const initializeDatabase = async () => {
   return new Promise<void>(async (resolve, reject) => {
     try {
-      // First create the table
-      await new Promise<void>((resolveCreate, rejectCreate) => {
+      await new Promise<void>((resolveTx, rejectTx) => {
         db.transaction(tx => {
+          // Todos table
           tx.executeSql(
             `CREATE TABLE IF NOT EXISTS todos (
               id TEXT PRIMARY KEY,
               content TEXT,
               status TEXT DEFAULT 'pending',
               server_id TEXT,
-              created_at INTEGER
+              created_at INTEGER,
+              version INTEGER DEFAULT 1
             );`,
+          );
+
+          // Transactions table
+          tx.executeSql(
+            `CREATE TABLE IF NOT EXISTS transactions (
+              id TEXT PRIMARY KEY,
+              type TEXT,
+              entityType TEXT,
+              entityId TEXT,
+              payload TEXT,
+              status TEXT DEFAULT 'pending',
+              retries INTEGER DEFAULT 0,
+              createdAt INTEGER
+            );`,
+          );
+
+          // Indexes
+          tx.executeSql(
+            'CREATE INDEX IF NOT EXISTS idx_tx_status ON transactions (status)',
+          );
+          tx.executeSql(
+            'CREATE INDEX IF NOT EXISTS idx_tx_retries ON transactions (retries)',
+          );
+
+          tx.executeSql(
+            'CREATE INDEX IF NOT EXISTS idx_todos_status ON todos (status)',
             [],
-            () => resolveCreate(),
-            error => rejectCreate(error),
+            () => resolveTx(),
+            (_, error) => rejectTx(error),
           );
         });
       });
 
-      // Then perform initial sync
-      await performInitialSync();
       isDbInitialized = true;
       resolve();
     } catch (error) {
@@ -96,111 +133,246 @@ const setupNetworkListener = () => {
   NetInfo.addEventListener(state => {
     isOnline = state.isConnected ?? false;
     if (isOnline && isDbInitialized) {
-      syncToAmplify();
+      processTransactions();
     }
   });
 };
 
+// Update the performInitialSync function
 const performInitialSync = async () => {
   try {
-    // Fetch from Amplify
+    // Fetch latest data from Amplify
     const {data: remoteItems} = await client.models.Todo.list();
 
-    // Insert into local DB
-    db.transaction(tx => {
-      remoteItems.forEach(item => {
-        tx.executeSql(
-          `INSERT OR REPLACE INTO todos 
-          (id, content, status, server_id, created_at) 
-          VALUES (?, ?, ?, ?, ?)`,
-          [
-            `local-${item.id}`, // Generate local ID
-            item.content,
-            'synced',
-            item.id,
-            Date.now(),
-          ],
+    // Get existing local items
+    const localItems = await new Promise<LocalTodo[]>(resolve => {
+      db.transaction(tx => {
+        tx.executeSql('SELECT * FROM todos', [], (_, result) =>
+          resolve(result.rows.raw()),
         );
       });
     });
+
+    // Merge strategy: Server wins for existing items, preserve local pending changes
+    db.transaction(tx => {
+      // Update or insert remote items
+      remoteItems.forEach(remoteItem => {
+        // Check if we have a local copy that's already synced
+        const existingLocal = localItems.find(
+          local => local.server_id === remoteItem.id,
+        );
+
+        if (existingLocal) {
+          // Update existing synced items with server data
+          tx.executeSql(
+            `UPDATE todos SET 
+              content = ?, 
+              version = ? 
+             WHERE server_id = ?`,
+            [remoteItem.content, existingLocal.version + 1, remoteItem.id],
+          );
+        } else {
+          // Insert new items from server
+          tx.executeSql(
+            `INSERT OR IGNORE INTO todos 
+            (id, content, status, server_id, created_at, version) 
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              `server_${remoteItem.id}`, // Separate ID namespace
+              remoteItem.content,
+              'synced',
+              remoteItem.id,
+              new Date(remoteItem.createdAt).getTime(),
+              1,
+            ],
+          );
+        }
+      });
+
+      // Preserve local unsynced items
+      localItems.forEach(localItem => {
+        if (!localItem.server_id) {
+          tx.executeSql(
+            `INSERT OR IGNORE INTO todos 
+            (id, content, status, created_at, version)
+            VALUES (?, ?, ?, ?, ?)`,
+            [
+              localItem.id,
+              localItem.content,
+              localItem.status,
+              localItem.created_at,
+              localItem.version,
+            ],
+          );
+        }
+      });
+    });
+
     queryClient.invalidateQueries({queryKey: ['todos']});
   } catch (error) {
     console.error('Initial sync failed:', error);
   }
 };
 
-// Sync function
-const syncToAmplify = async () => {
+// Transactional operations
+const createTodoTransaction = async (content: string): Promise<string> => {
+  const todoId = `local_${Date.now()}`;
+  const txId = `tx_${Date.now()}`;
+
+  await new Promise<void>((resolve, reject) => {
+    db.transaction(
+      tx => {
+        // Insert transaction
+        tx.executeSql(
+          `INSERT INTO transactions 
+        (id, type, entityType, entityId, payload, createdAt) 
+        VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            txId,
+            'create',
+            'todo',
+            todoId,
+            JSON.stringify({content}),
+            Date.now(),
+          ],
+        );
+
+        // Insert todo
+        tx.executeSql(
+          `INSERT INTO todos 
+        (id, content, status, created_at) 
+        VALUES (?, ?, ?, ?)`,
+          [todoId, content, 'pending', Date.now()],
+        );
+      },
+      error => reject(error),
+      () => resolve(),
+    );
+  });
+
+  return txId;
+};
+
+const deleteTodoTransaction = async (item: LocalTodo): Promise<string> => {
+  const txId = `tx_${Date.now()}`;
+
+  await new Promise<void>((resolve, reject) => {
+    db.transaction(
+      tx => {
+        // Insert transaction
+        tx.executeSql(
+          `INSERT INTO transactions 
+        (id, type, entityType, entityId, payload, createdAt) 
+        VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            txId,
+            'delete',
+            'todo',
+            item.id,
+            JSON.stringify({serverId: item.server_id}),
+            Date.now(),
+          ],
+        );
+
+        // Mark todo as deleted
+        tx.executeSql(`UPDATE todos SET status = 'deleted' WHERE id = ?`, [
+          item.id,
+        ]);
+      },
+      error => reject(error),
+      () => resolve(),
+    );
+  });
+
+  return txId;
+};
+
+// Sync processor
+const processTransactions = async () => {
   if (!isOnline || !isDbInitialized) return;
-  try {
-    // Sync pending additions
-    const pendingAdditions = await new Promise<LocalTodo[]>(
-      (resolve, reject) => {
-        db.transaction(tx => {
-          tx.executeSql(
-            'SELECT * FROM todos WHERE status = "pending"',
-            [],
-            (_, result) => resolve(result.rows.raw()),
-            error => reject(error),
-          );
-        });
-      },
-    );
 
-    for (const localItem of pendingAdditions) {
-      try {
-        const {data: serverItem} = await client.models.Todo.create({
-          content: localItem.content,
-        });
+  const transactions = await new Promise<Transaction[]>(resolve => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM transactions 
+        WHERE status = 'pending' 
+          AND retries < 3 
+        ORDER BY createdAt 
+        LIMIT 50`,
+        [],
+        (_, result) => resolve(result.rows.raw()),
+      );
+    });
+  });
 
-        db.transaction(tx => {
-          tx.executeSql(
-            'UPDATE todos SET status = "synced", server_id = ? WHERE id = ?',
-            [serverItem?.id, localItem.id],
-          );
-        });
-        queryClient.invalidateQueries({queryKey: ['todos']});
-      } catch (error) {
-        console.error('Sync addition error:', error);
-      }
-    }
+  for (const tx of transactions) {
+    try {
+      const payload = JSON.parse(tx.payload);
 
-    // Sync deletions
-    const pendingDeletions = await new Promise<LocalTodo[]>(
-      (resolve, reject) => {
-        db.transaction(tx => {
-          tx.executeSql(
-            'SELECT * FROM todos WHERE status = "deleted" AND server_id IS NOT NULL',
-            [],
-            (_, result) => resolve(result.rows.raw()),
-            error => reject(error),
-          );
-        });
-      },
-    );
-
-    for (const localItem of pendingDeletions) {
-      try {
-        // Add type guard to ensure server_id exists
-        if (localItem.server_id) {
-          await client.models.Todo.delete({id: localItem.server_id});
-
-          db.transaction(tx => {
-            tx.executeSql('DELETE FROM todos WHERE id = ?', [localItem.id]);
+      switch (tx.type) {
+        case 'create': {
+          const {data: serverTodo} = await client.models.Todo.create({
+            content: payload.content,
           });
-        } else {
-          // Handle items that somehow made it to deletions without server_id
-          console.warn('No server_id for deletion:', localItem);
-          db.transaction(tx => {
-            tx.executeSql('DELETE FROM todos WHERE id = ?', [localItem.id]);
+
+          if (!serverTodo) {
+            throw new Error('Failed to create Todo on server');
+          }
+
+          await new Promise<void>(resolve => {
+            db.transaction(sqlTx => {
+              // Update transaction status
+              sqlTx.executeSql(
+                `UPDATE transactions SET status = 'committed' WHERE id = ?`,
+                [tx.id],
+              );
+
+              // Update local todo with server ID
+              sqlTx.executeSql(
+                `UPDATE todos 
+                SET server_id = ?, status = 'synced', version = version + 1 
+                WHERE id = ?`,
+                [serverTodo.id, tx.entityId],
+              );
+
+              resolve();
+            });
           });
+          break;
         }
-      } catch (error) {
-        console.error('Sync deletion error:', error);
+
+        case 'delete': {
+          if (payload.serverId) {
+            await client.models.Todo.delete({id: payload.serverId});
+          }
+
+          await new Promise<void>(resolve => {
+            db.transaction(sqlTx => {
+              // Remove transaction and todo
+              sqlTx.executeSql(`DELETE FROM transactions WHERE id = ?`, [
+                tx.id,
+              ]);
+              sqlTx.executeSql(`DELETE FROM todos WHERE id = ?`, [tx.entityId]);
+              resolve();
+            });
+          });
+          break;
+        }
       }
+    } catch (error) {
+      console.error(`Transaction ${tx.id} failed:`, error);
+      await new Promise<void>(resolve => {
+        db.transaction(sqlTx => {
+          sqlTx.executeSql(
+            `UPDATE transactions 
+            SET retries = retries + 1 
+            WHERE id = ?`,
+            [tx.id],
+          );
+          resolve();
+        });
+      });
     }
-  } catch (error) {
-    console.error('Sync failed:', error);
   }
 };
 
@@ -237,87 +409,52 @@ const MainApp = () => {
       }),
   });
 
-  // Add todo mutation
+  // Add mutation
   const addMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const newItem: LocalTodo = {
-        id: `local-${Date.now()}`,
-        content,
-        status: 'pending',
-        created_at: Date.now(),
-      };
-
-      await new Promise((resolve, reject) => {
-        db.transaction(tx => {
-          tx.executeSql(
-            'INSERT INTO todos (id, content, status, created_at) VALUES (?, ?, ?, ?)',
-            [newItem.id, newItem.content, newItem.status, newItem.created_at],
-            (_, result) => resolve(result),
-            (_, error) => reject(error),
-          );
-        });
-      });
-      return newItem;
-    },
+    mutationFn: createTodoTransaction,
     onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['todos']});
-      syncToAmplify();
+      processTransactions();
     },
   });
 
-  // Delete todo mutation
+  // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: async (item: LocalTodo) => {
-      await new Promise((resolve, reject) => {
-        db.transaction(tx => {
-          tx.executeSql(
-            item.server_id
-              ? 'UPDATE todos SET status = "deleted" WHERE id = ?'
-              : 'DELETE FROM todos WHERE id = ?',
-            [item.id],
-            (_, result) => resolve(result),
-            (_, error) => reject(error),
-          );
-        });
-      });
-      return item;
-    },
+    mutationFn: deleteTodoTransaction,
     onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['todos']});
-      syncToAmplify();
+      processTransactions();
     },
   });
 
+  // Network handling
   useEffect(() => {
     let unsubscribe: () => void;
 
     const init = async () => {
       try {
         await initializeDatabase();
+        // Initial data sync from Amplify
+        await performInitialSync();
 
-        // Correct network listener setup
+        // Process any local changes
+        await processTransactions();
+
+        // Setup network listener
         unsubscribe = NetInfo.addEventListener(state => {
           isOnline = state.isConnected ?? false;
-          if (isOnline && isDbInitialized) {
-            syncToAmplify();
-          }
+          if (isOnline) processTransactions();
         });
 
-        await syncToAmplify();
+        // Refresh data after sync
+        queryClient.invalidateQueries({queryKey: ['todos']});
       } catch (error) {
-        console.error('Initialization error:', error);
         Alert.alert('Error', 'Failed to initialize database');
       }
     };
 
     init();
-
-    // Correct cleanup
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
+    return () => unsubscribe?.();
   }, []);
 
   const addItem = () => {
@@ -361,7 +498,7 @@ const MainApp = () => {
             onPress={() => handleDelete(item)}>
             <Text>{item.content}</Text>
             {item.status === 'pending' && (
-              <Text style={styles.pendingText}>Pending Sync</Text>
+              <Text style={styles.pendingText}>Pending</Text>
             )}
             {item.status === 'synced' && (
               <Text style={styles.syncedText}>Synced</Text>
