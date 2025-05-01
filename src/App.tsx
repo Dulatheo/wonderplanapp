@@ -8,6 +8,8 @@ import {TodoForm} from './components/TodoForm';
 import {ContextList} from './components/ContextList';
 import {styles} from './styles/globalStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {AppNavigator} from './navigation/AppNavigator';
+import {NavigationContainer} from '@react-navigation/native';
 
 const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
@@ -21,23 +23,16 @@ export default function App() {
         persister: asyncStoragePersister,
         maxAge: 1000 * 60 * 60 * 24,
       }}>
-      <TodoApp />
+      <MainApp />
     </PersistQueryClientProvider>
   );
 }
 
-// Child component (uses React Query hooks)
-function TodoApp() {
-  useSync(); // ✅ Now called INSIDE the provider
-  const {contextsQuery, addMutation, deleteMutation} = useContexts(); // ✅ Now inside the provider
-
+function MainApp() {
+  useSync();
   return (
-    <View style={styles.container}>
-      <TodoForm onSubmit={content => addMutation.mutate(content)} />
-      <ContextList
-        contexts={contextsQuery.data || []}
-        onDelete={item => deleteMutation.mutate(item)}
-      />
-    </View>
+    <NavigationContainer>
+      <AppNavigator />
+    </NavigationContainer>
   );
 }
