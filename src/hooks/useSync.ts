@@ -24,7 +24,7 @@ export const useSync = () => {
           if (isConnected) processTransactions();
         });
 
-        queryClient.invalidateQueries({queryKey: ['todos']});
+        queryClient.invalidateQueries({queryKey: ['contexts']});
       } catch (error) {
         console.error('Initialization error:', error);
       }

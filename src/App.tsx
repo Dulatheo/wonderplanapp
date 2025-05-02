@@ -10,6 +10,7 @@ import {styles} from './styles/globalStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {AppNavigator} from './navigation/AppNavigator';
 import {NavigationContainer} from '@react-navigation/native';
+import {PaperProvider} from 'react-native-paper';
 
 const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
@@ -23,7 +24,9 @@ export default function App() {
         persister: asyncStoragePersister,
         maxAge: 1000 * 60 * 60 * 24,
       }}>
-      <MainApp />
+      <PaperProvider>
+        <MainApp />
+      </PaperProvider>
     </PersistQueryClientProvider>
   );
 }

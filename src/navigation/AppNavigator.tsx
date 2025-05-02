@@ -11,7 +11,7 @@ export const AppNavigator = () => (
     <Stack.Screen
       name="Tasks"
       component={TasksListScreen}
-      options={{title: 'Tasks in Context'}}
+      options={({route}) => ({title: route.params?.context.name || 'Tasks'})}
     />
   </Stack.Navigator>
 );

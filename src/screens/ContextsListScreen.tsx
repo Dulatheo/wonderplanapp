@@ -7,16 +7,14 @@ import {styles} from '../styles/globalStyles';
 
 export const ContextsListScreen = () => {
   const navigation = useNavigation();
-  const {contextsQuery, addMutation, deleteMutation} = useContexts(); // ✅ Now inside the provider
+  const {contextsQuery, addMutation, deleteMutation} = useContexts();
 
   return (
     <View style={styles.container}>
-      <TodoForm
-        onSubmit={content => navigation.navigate('Tasks', {contextId: ''})}
-      />
+      <TodoForm onSubmit={content => addMutation.mutate(content)} />
       <ContextList
         contexts={contextsQuery.data || []}
-        onDelete={item => navigation.navigate('Tasks', {contextId: item.id})}
+        onItem={item => navigation.navigate('Tasks', {context: item})}
       />
     </View>
   );

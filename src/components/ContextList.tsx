@@ -5,14 +5,14 @@ import {LocalContext} from '../types/context';
 
 export const ContextList = ({
   contexts,
-  onDelete,
+  onItem,
 }: {
   contexts: LocalContext[];
-  onDelete: (item: LocalContext) => void;
+  onItem: (item: LocalContext) => void;
 }) => (
   <FlatList
     data={contexts}
-    renderItem={({item}) => <TodoItem item={item} onDelete={onDelete} />}
+    renderItem={({item}) => <TodoItem item={item} onItem={onItem} />}
     keyExtractor={item => item.id}
   />
 );

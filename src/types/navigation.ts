@@ -1,6 +1,8 @@
+import {LocalContext} from './context';
+
 export type RootStackParamList = {
   Contexts: undefined;
-  Tasks: {contextId: string}; // Define required params here
+  Tasks: {context: LocalContext};
 };
 
 declare global {

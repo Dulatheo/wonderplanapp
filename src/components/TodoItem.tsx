@@ -5,12 +5,12 @@ import {LocalContext} from '../types/context';
 
 export const TodoItem = ({
   item,
-  onDelete,
+  onItem,
 }: {
   item: LocalContext;
-  onDelete: (item: LocalContext) => void;
+  onItem: (item: LocalContext) => void;
 }) => (
-  <TouchableOpacity style={styles.listItem} onPress={() => onDelete(item)}>
+  <TouchableOpacity style={styles.listItem} onPress={() => onItem(item)}>
     <Text>{item.name}</Text>
     {item.status === 'pending' && (
       <Text style={styles.pendingText}>Pending</Text>

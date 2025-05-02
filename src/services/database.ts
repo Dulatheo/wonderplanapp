@@ -3,8 +3,11 @@ import SQLite from 'react-native-sqlite-storage';
 import {Alert} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {LocalContext} from '../types/context';
+import {LocalTask} from '../types/task';
 import {Transaction} from '../types/transaction';
 import {contextApi} from './api';
+import {PriorityValue} from '../types/task';
+import {queryClient} from './queryClient';
 
 const db = SQLite.openDatabase(
   {name: 'todo.db', location: 'default'},
@@ -27,7 +30,7 @@ export const initializeDatabase = async (): Promise<void> => {
           tx.executeSql(
             `CREATE TABLE IF NOT EXISTS contexts (
               id TEXT PRIMARY KEY,
-              name TEXT, // Removed UNIQUE constraint
+              name TEXT,
               status TEXT DEFAULT 'pending',
               server_id TEXT,
               created_at INTEGER,
@@ -117,7 +120,7 @@ export const performInitialSync = async (): Promise<void> => {
         if (existingLocal) {
           tx.executeSql(
             `UPDATE contexts SET 
-              content = ?, 
+              name = ?, 
               version = ? 
              WHERE server_id = ?`,
             [remoteItem.name, existingLocal.version + 1, remoteItem.id],
@@ -125,7 +128,7 @@ export const performInitialSync = async (): Promise<void> => {
         } else {
           tx.executeSql(
             `INSERT OR IGNORE INTO contexts 
-            (id, content, status, server_id, created_at, version) 
+            (id, name, status, server_id, created_at, version) 
             VALUES (?, ?, ?, ?, ?, ?)`,
             [
               `server_${remoteItem.id}`,
@@ -144,7 +147,7 @@ export const performInitialSync = async (): Promise<void> => {
         if (!localItem.server_id) {
           tx.executeSql(
             `INSERT OR IGNORE INTO contexts 
-            (id, content, status, created_at, version)
+            (id, name, status, created_at, version)
             VALUES (?, ?, ?, ?, ?)`,
             [
               localItem.id,
@@ -176,12 +179,12 @@ export const getContexts = async (): Promise<LocalContext[]> => {
   });
 };
 
-export const createTodoTransaction = async (
-  content: string,
+export const createContextTransaction = async (
+  name: string,
 ): Promise<string> => {
   const todoId = `local_${Date.now()}`;
   const txId = `tx_${Date.now()}`;
-
+  console.log('ENTERED CREATEA CONTEXT');
   await new Promise<void>((resolve, reject) => {
     db.transaction(
       tx => {
@@ -192,18 +195,111 @@ export const createTodoTransaction = async (
           [
             txId,
             'create',
-            'todo',
+            'contexts',
             todoId,
-            JSON.stringify({content}),
+            JSON.stringify({name}),
             Date.now(),
           ],
         );
 
         tx.executeSql(
           `INSERT INTO contexts 
-          (id, content, status, created_at) 
+          (id, name, status, created_at) 
           VALUES (?, ?, ?, ?)`,
-          [todoId, content, 'pending', Date.now()],
+          [todoId, name, 'pending', Date.now()],
+        );
+      },
+      error => reject(error),
+      () => resolve(),
+    );
+  });
+  return txId;
+};
+
+export const updateTaskPriorityTransaction = async (
+  taskId: string,
+  newPriority: PriorityValue,
+): Promise<string> => {
+  const txId = `tx_${Date.now()}`;
+
+  await new Promise<void>((resolve, reject) => {
+    db.transaction(
+      tx => {
+        tx.executeSql(
+          `INSERT INTO transactions 
+        (id, type, entityType, entityId, payload, createdAt) 
+        VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            txId,
+            'update',
+            'task',
+            taskId,
+            JSON.stringify({priority: newPriority}),
+            Date.now(),
+          ],
+        );
+
+        tx.executeSql(`UPDATE tasks SET priority = ? WHERE id = ?`, [
+          newPriority,
+          taskId,
+        ]);
+      },
+      error => reject(error),
+      () => resolve(),
+    );
+  });
+
+  return txId;
+};
+
+export const getTasksByContext = async (
+  contextId: string,
+): Promise<LocalTask[]> => {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM tasks 
+         WHERE context_id = ? 
+           AND status != 'deleted' 
+         ORDER BY priority ASC, created_at DESC`,
+        [contextId],
+        (_, result) => resolve(result.rows.raw()),
+        (_, error) => reject(error),
+      );
+    });
+  });
+};
+
+export const createTaskTransaction = async (
+  contextId: string,
+  name: string,
+  priority: PriorityValue,
+): Promise<string> => {
+  const taskId = `task_${Date.now()}`;
+  const txId = `tx_${Date.now()}`;
+
+  await new Promise<void>((resolve, reject) => {
+    db.transaction(
+      tx => {
+        tx.executeSql(
+          `INSERT INTO transactions 
+        (id, type, entityType, entityId, payload, createdAt) 
+        VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            txId,
+            'create',
+            'task',
+            taskId,
+            JSON.stringify({name, priority}),
+            Date.now(),
+          ],
+        );
+
+        tx.executeSql(
+          `INSERT INTO tasks 
+        (id, context_id, name, priority, created_at) 
+        VALUES (?, ?, ?, ?, ?)`,
+          [taskId, contextId, name, priority, Date.now()],
         );
       },
       error => reject(error),
@@ -214,7 +310,7 @@ export const createTodoTransaction = async (
   return txId;
 };
 
-export const deleteTodoTransaction = async (
+export const deleteTaskTransaction = async (
   item: LocalContext,
 ): Promise<string> => {
   const txId = `tx_${Date.now()}`;
@@ -229,7 +325,7 @@ export const deleteTodoTransaction = async (
           [
             txId,
             'delete',
-            'todo',
+            'contexts',
             item.id,
             JSON.stringify({serverId: item.server_id}),
             Date.now(),
@@ -257,7 +353,7 @@ export const processTransactions = async () => {
       tx.executeSql(
         `SELECT * FROM transactions 
           WHERE status = 'pending' 
-            AND retries < 3 
+          AND retries < 3 
           ORDER BY createdAt 
           LIMIT 50`,
         [],
@@ -269,31 +365,29 @@ export const processTransactions = async () => {
   for (const tx of transactions) {
     try {
       const payload = JSON.parse(tx.payload);
-
       switch (tx.type) {
         case 'create': {
-          const {data: serverTodo} = await contextApi.createContext(
-            payload.content,
+          console.log('CREATING NEW CONTEXT FROM PAYLOAD: ', payload);
+          const {data: serverContext} = await contextApi.createContext(
+            payload.name,
           );
 
-          if (!serverTodo) {
-            throw new Error('Failed to create Todo on server');
+          if (!serverContext) {
+            throw new Error('Failed to create Context on server');
           }
 
           await new Promise<void>(resolve => {
             db.transaction(sqlTx => {
-              // Update transaction status
               sqlTx.executeSql(
                 `UPDATE transactions SET status = 'committed' WHERE id = ?`,
                 [tx.id],
               );
 
-              // Update local todo with server ID
               sqlTx.executeSql(
                 `UPDATE contexts 
                   SET server_id = ?, status = 'synced', version = version + 1 
                   WHERE id = ?`,
-                [serverTodo.id, tx.entityId],
+                [serverContext.id, tx.entityId],
               );
 
               resolve();
@@ -309,7 +403,6 @@ export const processTransactions = async () => {
 
           await new Promise<void>(resolve => {
             db.transaction(sqlTx => {
-              // Remove transaction and todo
               sqlTx.executeSql(`DELETE FROM transactions WHERE id = ?`, [
                 tx.id,
               ]);
@@ -322,6 +415,7 @@ export const processTransactions = async () => {
           break;
         }
       }
+      queryClient.invalidateQueries({queryKey: ['contexts']});
     } catch (error) {
       console.error(`Transaction ${tx.id} failed:`, error);
       await new Promise<void>(resolve => {

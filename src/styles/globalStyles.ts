@@ -1,4 +1,5 @@
-import {StyleSheet} from 'react-native';
+import {StyleSheet, TextStyle} from 'react-native';
+import {PriorityValue, getPriorityByValue} from '../types/task';
 
 export const styles = StyleSheet.create({
   container: {
@@ -40,4 +41,26 @@ export const styles = StyleSheet.create({
     color: '#28a745',
     fontSize: 12,
   },
+  formContainer: {
+    padding: 16,
+    backgroundColor: '#fff',
+    marginBottom: 8,
+  },
+  taskItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  priorityText: {
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+});
+
+export const getPriorityStyle = (priority: PriorityValue): TextStyle => ({
+  color: getPriorityByValue(priority).color,
+  fontWeight: 'bold' as const,
+  fontSize: 12,
 });
