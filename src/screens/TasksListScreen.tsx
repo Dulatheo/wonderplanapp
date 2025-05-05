@@ -4,7 +4,7 @@ import {styles, getPriorityStyle} from '../styles/globalStyles';
 import {getPriorityByValue, PriorityValue} from '../types/task';
 import {useTasks} from '../hooks/useTasks';
 import {useState} from 'react';
-import {createTaskTransaction} from '../services/database';
+import {createTaskTransaction} from '../services/database/taskDb';
 import {PriorityMenuSelector} from '../components/PriorityMenuSelector';
 
 import {StackScreenProps} from '@react-navigation/stack';

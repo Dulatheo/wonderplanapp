@@ -1,16 +1,16 @@
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {
   createTaskTransaction,
+  deleteTaskTransaction,
   getTasksByContext,
   updateTaskPriorityTransaction,
-} from '../services/database';
+} from '../services/database/taskDb';
 import {LocalTask, PriorityValue} from '../types/task';
 import {LocalContext} from '../types/context';
 
 export const useTasks = (context: LocalContext) => {
   const queryClient = useQueryClient();
 
-  // Fetch tasks for current context
   const tasksQuery = useQuery<LocalTask[]>({
     queryKey: ['tasks', context.id],
     queryFn: () => getTasksByContext(context.id),
@@ -40,24 +40,24 @@ export const useTasks = (context: LocalContext) => {
     },
   });
 
-  // Delete task mutation
-  //   const deleteTaskMutation = useMutation({
-  //     mutationFn: (taskId: string) => deleteTaskTransaction(taskId),
-  //     onSuccess: () => {
-  //       queryClient.invalidateQueries({queryKey: ['tasks', contextId]});
-  //     },
-  //     onError: error => {
-  //       console.error('Task deletion failed:', error);
-  //     },
-  //   });
+  //Delete task mutation
+  const deleteTaskMutation = useMutation({
+    mutationFn: (task: LocalTask) => deleteTaskTransaction(task),
+    onSuccess: () => {
+      queryClient.invalidateQueries({queryKey: ['tasks', context.id]});
+    },
+    onError: error => {
+      console.error('Task deletion failed:', error);
+    },
+  });
 
   return {
     tasksQuery,
     createTask: createTaskMutation.mutate,
     updatePriority: updatePriorityMutation.mutate,
-    //deleteTask: deleteTaskMutation.mutate,
+    deleteTask: deleteTaskMutation.mutate,
     isCreating: createTaskMutation.isPending,
     isUpdating: updatePriorityMutation.isPending,
-    //isDeleting: deleteTaskMutation.isPending,
+    isDeleting: deleteTaskMutation.isPending,
   };
 };

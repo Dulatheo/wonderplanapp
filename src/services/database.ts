@@ -2,14 +2,13 @@
 import SQLite from 'react-native-sqlite-storage';
 import {Alert} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import {LocalContext} from '../types/context';
-import {LocalTask} from '../types/task';
 import {Transaction} from '../types/transaction';
 import {contextApi} from './api';
-import {PriorityValue} from '../types/task';
 import {queryClient} from './queryClient';
+import {getContexts} from './database/contextDb';
+import {TransactionProcessor} from './sync/TransactionProcessor';
 
-const db = SQLite.openDatabase(
+export const db = SQLite.openDatabase(
   {name: 'todo.db', location: 'default'},
   () => console.log('Database opened'),
   error => console.error('Database error:', error),
@@ -18,8 +17,54 @@ const db = SQLite.openDatabase(
 let isDbInitialized = false;
 let isOnline = true;
 
+export const processor = new TransactionProcessor();
+
 export const setOnlineStatus = (status: boolean) => {
   isOnline = status;
+};
+
+export const pendingTransactions = {
+  async getPendingTransactions(): Promise<Transaction[]> {
+    return new Promise((resolve, reject) => {
+      db.transaction(
+        tx => {
+          tx.executeSql(
+            `SELECT * FROM transactions 
+             WHERE status = 'pending' AND retries < 3 
+             ORDER BY createdAt LIMIT 50`,
+            [],
+            (_, result) => resolve(result.rows.raw()),
+            (_, error) => {
+              reject(error);
+              return true; // Prevent error propagation
+            },
+          );
+        },
+        error => {
+          reject(error); // Transaction error handler
+        },
+      );
+    });
+  },
+
+  async executeSql(sql: string, params: any[] = []) {
+    return new Promise((resolve, reject) => {
+      db.transaction(
+        tx => {
+          tx.executeSql(
+            sql,
+            params,
+            (_, result) => resolve(result),
+            (_, error) => {
+              reject(error);
+              return true;
+            },
+          );
+        },
+        error => reject(error),
+      );
+    });
+  },
 };
 
 export const initializeDatabase = async (): Promise<void> => {
@@ -100,9 +145,13 @@ const setupNetworkListener = () => {
   NetInfo.addEventListener(state => {
     isOnline = state.isConnected ?? false;
     if (isOnline && isDbInitialized) {
-      processTransactions();
+      proccessTransaction();
     }
   });
+};
+
+const proccessTransaction = async () => {
+  await processor.processPendingTransactions();
 };
 
 export const performInitialSync = async (): Promise<void> => {
@@ -166,269 +215,90 @@ export const performInitialSync = async (): Promise<void> => {
   }
 };
 
-export const getContexts = async (): Promise<LocalContext[]> => {
-  return new Promise((resolve, reject) => {
-    db.transaction(tx => {
-      tx.executeSql(
-        'SELECT * FROM contexts WHERE status != "deleted" ORDER BY created_at DESC',
-        [],
-        (_, result) => resolve(result.rows.raw()),
-        (_, error) => reject(error),
-      );
-    });
-  });
-};
-
-export const createContextTransaction = async (
-  name: string,
-): Promise<string> => {
-  const todoId = `local_${Date.now()}`;
-  const txId = `tx_${Date.now()}`;
-  console.log('ENTERED CREATEA CONTEXT');
-  await new Promise<void>((resolve, reject) => {
-    db.transaction(
-      tx => {
-        tx.executeSql(
-          `INSERT INTO transactions 
-          (id, type, entityType, entityId, payload, createdAt) 
-          VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            txId,
-            'create',
-            'contexts',
-            todoId,
-            JSON.stringify({name}),
-            Date.now(),
-          ],
-        );
-
-        tx.executeSql(
-          `INSERT INTO contexts 
-          (id, name, status, created_at) 
-          VALUES (?, ?, ?, ?)`,
-          [todoId, name, 'pending', Date.now()],
-        );
-      },
-      error => reject(error),
-      () => resolve(),
-    );
-  });
-  return txId;
-};
-
-export const updateTaskPriorityTransaction = async (
-  taskId: string,
-  newPriority: PriorityValue,
-): Promise<string> => {
-  const txId = `tx_${Date.now()}`;
-
-  await new Promise<void>((resolve, reject) => {
-    db.transaction(
-      tx => {
-        tx.executeSql(
-          `INSERT INTO transactions 
-        (id, type, entityType, entityId, payload, createdAt) 
-        VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            txId,
-            'update',
-            'task',
-            taskId,
-            JSON.stringify({priority: newPriority}),
-            Date.now(),
-          ],
-        );
-
-        tx.executeSql(`UPDATE tasks SET priority = ? WHERE id = ?`, [
-          newPriority,
-          taskId,
-        ]);
-      },
-      error => reject(error),
-      () => resolve(),
-    );
-  });
-
-  return txId;
-};
-
-export const getTasksByContext = async (
-  contextId: string,
-): Promise<LocalTask[]> => {
-  return new Promise((resolve, reject) => {
-    db.transaction(tx => {
-      tx.executeSql(
-        `SELECT * FROM tasks 
-         WHERE context_id = ? 
-           AND status != 'deleted' 
-         ORDER BY priority ASC, created_at DESC`,
-        [contextId],
-        (_, result) => resolve(result.rows.raw()),
-        (_, error) => reject(error),
-      );
-    });
-  });
-};
-
-export const createTaskTransaction = async (
-  contextId: string,
-  name: string,
-  priority: PriorityValue,
-): Promise<string> => {
-  const taskId = `task_${Date.now()}`;
-  const txId = `tx_${Date.now()}`;
-
-  await new Promise<void>((resolve, reject) => {
-    db.transaction(
-      tx => {
-        tx.executeSql(
-          `INSERT INTO transactions 
-        (id, type, entityType, entityId, payload, createdAt) 
-        VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            txId,
-            'create',
-            'task',
-            taskId,
-            JSON.stringify({name, priority}),
-            Date.now(),
-          ],
-        );
-
-        tx.executeSql(
-          `INSERT INTO tasks 
-        (id, context_id, name, priority, created_at) 
-        VALUES (?, ?, ?, ?, ?)`,
-          [taskId, contextId, name, priority, Date.now()],
-        );
-      },
-      error => reject(error),
-      () => resolve(),
-    );
-  });
-
-  return txId;
-};
-
-export const deleteTaskTransaction = async (
-  item: LocalContext,
-): Promise<string> => {
-  const txId = `tx_${Date.now()}`;
-
-  await new Promise<void>((resolve, reject) => {
-    db.transaction(
-      tx => {
-        tx.executeSql(
-          `INSERT INTO transactions 
-          (id, type, entityType, entityId, payload, createdAt) 
-          VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            txId,
-            'delete',
-            'contexts',
-            item.id,
-            JSON.stringify({serverId: item.server_id}),
-            Date.now(),
-          ],
-        );
-
-        tx.executeSql(`UPDATE contexts SET status = 'deleted' WHERE id = ?`, [
-          item.id,
-        ]);
-      },
-      error => reject(error),
-      () => resolve(),
-    );
-  });
-
-  return txId;
-};
-
 // Sync processor
-export const processTransactions = async () => {
-  if (!isOnline || !isDbInitialized) return;
+// export const processTransactions = async () => {
+//   if (!isOnline || !isDbInitialized) return;
 
-  const transactions = await new Promise<Transaction[]>(resolve => {
-    db.transaction(tx => {
-      tx.executeSql(
-        `SELECT * FROM transactions 
-          WHERE status = 'pending' 
-          AND retries < 3 
-          ORDER BY createdAt 
-          LIMIT 50`,
-        [],
-        (_, result) => resolve(result.rows.raw()),
-      );
-    });
-  });
+//   const transactions = await new Promise<Transaction[]>(resolve => {
+//     db.transaction(tx => {
+//       tx.executeSql(
+//         `SELECT * FROM transactions
+//           WHERE status = 'pending'
+//           AND retries < 3
+//           ORDER BY createdAt
+//           LIMIT 50`,
+//         [],
+//         (_, result) => resolve(result.rows.raw()),
+//       );
+//     });
+//   });
 
-  for (const tx of transactions) {
-    try {
-      const payload = JSON.parse(tx.payload);
-      switch (tx.type) {
-        case 'create': {
-          console.log('CREATING NEW CONTEXT FROM PAYLOAD: ', payload);
-          const {data: serverContext} = await contextApi.createContext(
-            payload.name,
-          );
+//   for (const tx of transactions) {
+//     try {
+//       const payload = JSON.parse(tx.payload);
+//       switch (tx.type) {
+//         case 'create': {
+//           const {data: serverContext} = await contextApi.createContext(
+//             payload.name,
+//           );
 
-          if (!serverContext) {
-            throw new Error('Failed to create Context on server');
-          }
+//           if (!serverContext) {
+//             throw new Error('Failed to create Context on server');
+//           }
 
-          await new Promise<void>(resolve => {
-            db.transaction(sqlTx => {
-              sqlTx.executeSql(
-                `UPDATE transactions SET status = 'committed' WHERE id = ?`,
-                [tx.id],
-              );
+//           await new Promise<void>(resolve => {
+//             db.transaction(sqlTx => {
+//               sqlTx.executeSql(
+//                 `UPDATE transactions SET status = 'committed' WHERE id = ?`,
+//                 [tx.id],
+//               );
 
-              sqlTx.executeSql(
-                `UPDATE contexts 
-                  SET server_id = ?, status = 'synced', version = version + 1 
-                  WHERE id = ?`,
-                [serverContext.id, tx.entityId],
-              );
+//               sqlTx.executeSql(
+//                 `UPDATE contexts
+//                   SET server_id = ?, status = 'synced', version = version + 1
+//                   WHERE id = ?`,
+//                 [serverContext.id, tx.entityId],
+//               );
 
-              resolve();
-            });
-          });
-          break;
-        }
+//               resolve();
+//             });
+//           });
+//           break;
+//         }
 
-        case 'delete': {
-          if (payload.serverId) {
-            await contextApi.deleteContext(payload.serverId);
-          }
+//         case 'delete': {
+//           if (payload.serverId) {
+//             await contextApi.deleteContext(payload.serverId);
+//           }
 
-          await new Promise<void>(resolve => {
-            db.transaction(sqlTx => {
-              sqlTx.executeSql(`DELETE FROM transactions WHERE id = ?`, [
-                tx.id,
-              ]);
-              sqlTx.executeSql(`DELETE FROM contexts WHERE id = ?`, [
-                tx.entityId,
-              ]);
-              resolve();
-            });
-          });
-          break;
-        }
-      }
-      queryClient.invalidateQueries({queryKey: ['contexts']});
-    } catch (error) {
-      console.error(`Transaction ${tx.id} failed:`, error);
-      await new Promise<void>(resolve => {
-        db.transaction(sqlTx => {
-          sqlTx.executeSql(
-            `UPDATE transactions 
-              SET retries = retries + 1 
-              WHERE id = ?`,
-            [tx.id],
-          );
-          resolve();
-        });
-      });
-    }
-  }
-};
+//           await new Promise<void>(resolve => {
+//             db.transaction(sqlTx => {
+//               sqlTx.executeSql(`DELETE FROM transactions WHERE id = ?`, [
+//                 tx.id,
+//               ]);
+//               sqlTx.executeSql(`DELETE FROM contexts WHERE id = ?`, [
+//                 tx.entityId,
+//               ]);
+//               resolve();
+//             });
+//           });
+//           break;
+//         }
+//       }
+//       queryClient.invalidateQueries({queryKey: ['contexts']});
+//     } catch (error) {
+//       console.error(`Transaction ${tx.id} failed:`, error);
+//       await new Promise<void>(resolve => {
+//         db.transaction(sqlTx => {
+//           sqlTx.executeSql(
+//             `UPDATE transactions
+//               SET retries = retries + 1
+//               WHERE id = ?`,
+//             [tx.id],
+//           );
+//           resolve();
+//         });
+//       });
+//     }
+//   }
+// };

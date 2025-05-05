@@ -9,7 +9,19 @@ and "delete" any "Todo" records.
 const schema = a.schema({
   Context: a
     .model({
+      contextId: a.id(),
       name: a.string(),
+      tasks: a.hasMany('Task', 'contextId'),
+    })
+    .authorization(allow => [allow.guest()]),
+
+  Task: a
+    .model({
+      contextId: a.id(),
+      name: a.string().required(),
+      priority: a.integer().required(),
+      status: a.string().required(),
+      context: a.belongsTo('Context', 'contextId'),
     })
     .authorization(allow => [allow.guest()]),
 });

@@ -1,11 +1,12 @@
 import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
 import {LocalContext} from '../types/context';
+import {processor} from '../services/database';
+
 import {
   getContexts,
   createContextTransaction,
-  processTransactions,
-  deleteTaskTransaction,
-} from '../services/database';
+  deleteContextTransaction,
+} from '../services/database/contextDb';
 
 export const useContexts = () => {
   const queryClient = useQueryClient();
@@ -27,12 +28,16 @@ export const useContexts = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (item: LocalContext) => deleteTaskTransaction(item),
+    mutationFn: (item: LocalContext) => deleteContextTransaction(item),
     onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['contexts']});
       processTransactions();
     },
   });
+
+  const processTransactions = async () => {
+    await processor.processPendingTransactions();
+  };
 
   return {contextsQuery, addMutation, deleteMutation};
 };
