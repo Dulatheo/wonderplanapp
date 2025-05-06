@@ -7,6 +7,7 @@ import {contextApi} from './api';
 import {queryClient} from './queryClient';
 import {getContexts} from './database/contextDb';
 import {TransactionProcessor} from './sync/TransactionProcessor';
+import {tables, indexes} from './database/schemas';
 
 export const db = SQLite.openDatabase(
   {name: 'todo.db', location: 'default'},
@@ -68,77 +69,35 @@ export const pendingTransactions = {
 };
 
 export const initializeDatabase = async (): Promise<void> => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      await new Promise<void>((resolveTx, rejectTx) => {
-        db.transaction(tx => {
-          tx.executeSql(
-            `CREATE TABLE IF NOT EXISTS contexts (
-              id TEXT PRIMARY KEY,
-              name TEXT,
-              status TEXT DEFAULT 'pending',
-              server_id TEXT,
-              created_at INTEGER,
-              version INTEGER DEFAULT 1
-            );`,
-          );
+  try {
+    await new Promise<void>((resolve, reject) => {
+      db.transaction(
+        tx => {
+          // Create tables
+          tables.forEach(({sql}) => {
+            tx.executeSql(sql);
+          });
 
-          tx.executeSql(
-            `CREATE TABLE IF NOT EXISTS tasks (
-              id TEXT PRIMARY KEY,
-              context_id TEXT,
-              name TEXT,
-              priority INTEGER DEFAULT 4,
-              status TEXT DEFAULT 'pending',
-              server_id TEXT,
-              created_at INTEGER,
-              version INTEGER DEFAULT 1,
-              FOREIGN KEY(context_id) REFERENCES contexts(id) ON DELETE SET NULL
-            );`,
-          );
+          // Create indexes
+          indexes.forEach(({sql}) => {
+            tx.executeSql(sql);
+          });
+        },
+        error => {
+          reject(error);
+        },
+        () => {
+          resolve();
+        },
+      );
+    });
 
-          tx.executeSql(
-            `CREATE TABLE IF NOT EXISTS transactions (
-              id TEXT PRIMARY KEY,
-              type TEXT,
-              entityType TEXT,
-              entityId TEXT,
-              payload TEXT,
-              status TEXT DEFAULT 'pending',
-              retries INTEGER DEFAULT 0,
-              createdAt INTEGER
-            );`,
-          );
-
-          tx.executeSql(
-            'CREATE INDEX IF NOT EXISTS idx_tx_status ON transactions (status)',
-          );
-
-          tx.executeSql(
-            'CREATE INDEX IF NOT EXISTS idx_tx_retries ON transactions (retries)',
-          );
-
-          tx.executeSql(
-            'CREATE INDEX IF NOT EXISTS idx_tasks_context ON tasks (context_id) WHERE context_id IS NOT NULL',
-          );
-
-          tx.executeSql(
-            'CREATE INDEX IF NOT EXISTS idx_contexts_name ON contexts (name)',
-            [],
-            () => resolveTx(), // Success callback
-            (_, error) => rejectTx(error), // Error callback
-          );
-        });
-      });
-
-      isDbInitialized = true;
-      setupNetworkListener();
-      resolve();
-    } catch (error) {
-      console.error('Database initialization failed:', error);
-      reject(error);
-    }
-  });
+    isDbInitialized = true;
+    setupNetworkListener();
+  } catch (error) {
+    console.error('Database initialization failed:', error);
+    throw error;
+  }
 };
 
 const setupNetworkListener = () => {
@@ -214,91 +173,3 @@ export const performInitialSync = async (): Promise<void> => {
     throw error;
   }
 };
-
-// Sync processor
-// export const processTransactions = async () => {
-//   if (!isOnline || !isDbInitialized) return;
-
-//   const transactions = await new Promise<Transaction[]>(resolve => {
-//     db.transaction(tx => {
-//       tx.executeSql(
-//         `SELECT * FROM transactions
-//           WHERE status = 'pending'
-//           AND retries < 3
-//           ORDER BY createdAt
-//           LIMIT 50`,
-//         [],
-//         (_, result) => resolve(result.rows.raw()),
-//       );
-//     });
-//   });
-
-//   for (const tx of transactions) {
-//     try {
-//       const payload = JSON.parse(tx.payload);
-//       switch (tx.type) {
-//         case 'create': {
-//           const {data: serverContext} = await contextApi.createContext(
-//             payload.name,
-//           );
-
-//           if (!serverContext) {
-//             throw new Error('Failed to create Context on server');
-//           }
-
-//           await new Promise<void>(resolve => {
-//             db.transaction(sqlTx => {
-//               sqlTx.executeSql(
-//                 `UPDATE transactions SET status = 'committed' WHERE id = ?`,
-//                 [tx.id],
-//               );
-
-//               sqlTx.executeSql(
-//                 `UPDATE contexts
-//                   SET server_id = ?, status = 'synced', version = version + 1
-//                   WHERE id = ?`,
-//                 [serverContext.id, tx.entityId],
-//               );
-
-//               resolve();
-//             });
-//           });
-//           break;
-//         }
-
-//         case 'delete': {
-//           if (payload.serverId) {
-//             await contextApi.deleteContext(payload.serverId);
-//           }
-
-//           await new Promise<void>(resolve => {
-//             db.transaction(sqlTx => {
-//               sqlTx.executeSql(`DELETE FROM transactions WHERE id = ?`, [
-//                 tx.id,
-//               ]);
-//               sqlTx.executeSql(`DELETE FROM contexts WHERE id = ?`, [
-//                 tx.entityId,
-//               ]);
-//               resolve();
-//             });
-//           });
-//           break;
-//         }
-//       }
-//       queryClient.invalidateQueries({queryKey: ['contexts']});
-//     } catch (error) {
-//       console.error(`Transaction ${tx.id} failed:`, error);
-//       await new Promise<void>(resolve => {
-//         db.transaction(sqlTx => {
-//           sqlTx.executeSql(
-//             `UPDATE transactions
-//               SET retries = retries + 1
-//               WHERE id = ?`,
-//             [tx.id],
-//           );
-//           resolve();
-//         });
-//       });
-//     }
-//   }
-// };

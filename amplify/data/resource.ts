@@ -6,25 +6,35 @@ adding a new "isDone" field as a boolean. The authorization rule below
 specifies that any unauthenticated user can "create", "read", "update", 
 and "delete" any "Todo" records.
 =========================================================================*/
-const schema = a.schema({
-  Context: a
-    .model({
-      contextId: a.id(),
-      name: a.string(),
-      tasks: a.hasMany('Task', 'contextId'),
-    })
-    .authorization(allow => [allow.guest()]),
 
-  Task: a
-    .model({
-      contextId: a.id(),
+const schema = a
+  .schema({
+    Project: a.model({
+      name: a.string().required(),
+      tasks: a.hasMany('Task', 'projectId'),
+    }),
+
+    Task: a.model({
       name: a.string().required(),
       priority: a.integer().required(),
-      status: a.string().required(),
+      projectId: a.id(),
+      project: a.belongsTo('Project', 'projectId'),
+      contexts: a.hasMany('ContextTask', 'taskId'),
+    }),
+
+    Context: a.model({
+      name: a.string().required(),
+      tasks: a.hasMany('ContextTask', 'contextId'),
+    }),
+
+    ContextTask: a.model({
+      contextId: a.id().required(),
+      taskId: a.id().required(),
       context: a.belongsTo('Context', 'contextId'),
-    })
-    .authorization(allow => [allow.guest()]),
-});
+      task: a.belongsTo('Task', 'taskId'),
+    }),
+  })
+  .authorization(allow => allow.publicApiKey());
 
 export type Schema = ClientSchema<typeof schema>;
 

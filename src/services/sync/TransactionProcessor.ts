@@ -27,7 +27,6 @@ export class TransactionProcessor {
       }
 
       await this.updateLocalState(tx, serverId);
-      //await this.markTransactionCompleted(tx.id);
       this.invalidateQueries(tx.entityType);
     } catch (error) {
       await this.handleTransactionError(tx.id, error);
@@ -36,13 +35,6 @@ export class TransactionProcessor {
   }
 
   private async updateLocalState(tx: Transaction, serverId?: string) {
-    console.log(
-      'updateLocalState for ',
-      tx.entityType,
-      ' with serverId: ',
-      serverId,
-    );
-
     await db.transaction(async sqlTx => {
       if (tx.type === 'create' && serverId) {
         await db.executeSql(

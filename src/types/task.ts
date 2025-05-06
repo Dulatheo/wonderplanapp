@@ -15,12 +15,12 @@ export const getPriorityByValue = (value: PriorityValue) => {
 };
 
 export type LocalTask = {
-  id: string;
+  id: string; // Local UUID
   name: string;
-  context_id?: string;
-  priority: PriorityValue;
+  priority: PriorityValue; // 1-4
   status: 'pending' | 'synced' | 'deleted';
-  server_id?: string;
-  created_at: number;
-  version: number;
+  server_id?: string; // Amplify ID after sync
+  project_id?: string; // Local project ID (optional)
+  created_at: number; // Unix timestamp
+  version: number; // For conflict resolution
 };

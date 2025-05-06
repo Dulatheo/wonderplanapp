@@ -1,6 +1,21 @@
 import {PriorityValue, LocalTask} from '../../types/task';
 import {db} from '../database';
 
+export const getAllTasks = async (): Promise<LocalTask[]> => {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM tasks 
+           WHERE status != 'deleted' 
+           ORDER BY priority ASC, created_at DESC`,
+        [],
+        (_, result) => resolve(result.rows.raw()),
+        (_, error) => reject(error),
+      );
+    });
+  });
+};
+
 export const getTasksByContext = async (
   contextId: string,
 ): Promise<LocalTask[]> => {
