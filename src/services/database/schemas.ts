@@ -2,7 +2,7 @@ export const tables = [
   {
     name: 'projects',
     sql: `
-        CREATE TABLE projects (
+        CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
             name TEXT,
             status TEXT DEFAULT 'pending',
@@ -56,7 +56,7 @@ export const tables = [
   {
     name: 'contexts_tasks',
     sql: `
-        CREATE TABLE context_tasks (
+        CREATE TABLE IF NOT EXISTS context_tasks (
           id TEXT PRIMARY KEY,
           local_context_id TEXT NOT NULL,
           local_task_id TEXT NOT NULL,

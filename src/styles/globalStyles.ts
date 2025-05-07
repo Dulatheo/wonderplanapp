@@ -57,6 +57,7 @@ export const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 12,
   },
+  fabButton: {},
 });
 
 export const getPriorityStyle = (priority: PriorityValue): TextStyle => ({

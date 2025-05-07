@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {AppNavigator} from './navigation/AppNavigator';
 import {NavigationContainer} from '@react-navigation/native';
 import {PaperProvider} from 'react-native-paper';
+import {SafeAreaView} from 'react-native-safe-area-context';
 
 const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
@@ -34,8 +35,8 @@ export default function App() {
 function MainApp() {
   useSync();
   return (
-    <NavigationContainer>
+    <SafeAreaView style={{flex: 1}}>
       <AppNavigator />
-    </NavigationContainer>
+    </SafeAreaView>
   );
 }
