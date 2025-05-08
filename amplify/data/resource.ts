@@ -7,34 +7,40 @@ specifies that any unauthenticated user can "create", "read", "update",
 and "delete" any "Todo" records.
 =========================================================================*/
 
-const schema = a
-  .schema({
-    Project: a.model({
+const schema = a.schema({
+  Project: a
+    .model({
       name: a.string().required(),
       tasks: a.hasMany('Task', 'projectId'),
-    }),
+    })
+    .authorization(allow => [allow.guest()]),
 
-    Task: a.model({
+  Task: a
+    .model({
       name: a.string().required(),
       priority: a.integer().required(),
       projectId: a.id(),
       project: a.belongsTo('Project', 'projectId'),
       contexts: a.hasMany('ContextTask', 'taskId'),
-    }),
+    })
+    .authorization(allow => [allow.guest()]),
 
-    Context: a.model({
+  Context: a
+    .model({
       name: a.string().required(),
       tasks: a.hasMany('ContextTask', 'contextId'),
-    }),
+    })
+    .authorization(allow => [allow.guest()]),
 
-    ContextTask: a.model({
+  ContextTask: a
+    .model({
       contextId: a.id().required(),
       taskId: a.id().required(),
       context: a.belongsTo('Context', 'contextId'),
       task: a.belongsTo('Task', 'taskId'),
-    }),
-  })
-  .authorization(allow => allow.publicApiKey());
+    })
+    .authorization(allow => [allow.guest()]),
+});
 
 export type Schema = ClientSchema<typeof schema>;
 

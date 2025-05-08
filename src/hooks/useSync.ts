@@ -23,8 +23,6 @@ export const useSync = () => {
           setOnlineStatus(isConnected);
           if (isConnected) processor.processPendingTransactions();
         });
-
-        queryClient.invalidateQueries({queryKey: ['contexts']});
       } catch (error) {
         console.error('Initialization error:', error);
       }

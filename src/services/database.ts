@@ -8,6 +8,8 @@ import {queryClient} from './queryClient';
 import {getContexts} from './database/contextDb';
 import {TransactionProcessor} from './sync/TransactionProcessor';
 import {tables, indexes} from './database/schemas';
+import {taskApi} from './api';
+import {SyncTableConfig, syncConfigs} from './sync/SyncConfig';
 
 export const db = SQLite.openDatabase(
   {name: 'todo.db', location: 'default'},
@@ -115,61 +117,122 @@ const proccessTransaction = async () => {
 
 export const performInitialSync = async (): Promise<void> => {
   try {
-    const {data: remoteItems} = await contextApi.listContexts();
-    const localItems = await getContexts();
-
-    db.transaction(tx => {
-      // Update or insert remote items
-      remoteItems.forEach(remoteItem => {
-        const existingLocal = localItems.find(
-          local => local.server_id === remoteItem.id,
-        );
-
-        if (existingLocal) {
-          tx.executeSql(
-            `UPDATE contexts SET 
-              name = ?, 
-              version = ? 
-             WHERE server_id = ?`,
-            [remoteItem.name, existingLocal.version + 1, remoteItem.id],
-          );
-        } else {
-          tx.executeSql(
-            `INSERT OR IGNORE INTO contexts 
-            (id, name, status, server_id, created_at, version) 
-            VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              `server_${remoteItem.id}`,
-              remoteItem.name,
-              'synced',
-              remoteItem.id,
-              new Date(remoteItem.createdAt).getTime(),
-              1,
-            ],
-          );
-        }
-      });
-
-      // Preserve local unsynced items
-      localItems.forEach(localItem => {
-        if (!localItem.server_id) {
-          tx.executeSql(
-            `INSERT OR IGNORE INTO contexts 
-            (id, name, status, created_at, version)
-            VALUES (?, ?, ?, ?, ?)`,
-            [
-              localItem.id,
-              localItem.name,
-              localItem.status,
-              localItem.created_at,
-              localItem.version,
-            ],
-          );
-        }
-      });
-    });
+    // Sync in dependency order
+    for (const config of syncConfigs) {
+      await syncTable(config);
+    }
   } catch (error) {
     console.error('Initial sync failed:', error);
     throw error;
   }
 };
+
+export async function getLocalItems(tableName: string): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM ${tableName}`,
+        [],
+        (_, result) => {
+          const items: any[] = [];
+          for (let i = 0; i < result.rows.length; i++) {
+            items.push(result.rows.item(i));
+          }
+          resolve(items);
+        },
+        (_, error) => {
+          reject(error);
+          return false;
+        },
+      );
+    });
+  });
+}
+
+async function syncTable(config: SyncTableConfig): Promise<void> {
+  const {
+    tableName,
+    apiList,
+    mapRemoteToLocal,
+    updateColumns,
+    insertColumns,
+    versionUpdate = true,
+  } = config;
+
+  try {
+    const {data: remoteItems} = await apiList();
+    const localItems = await getLocalItems(tableName);
+
+    const processedRemoteItems = await Promise.all(
+      remoteItems.map(async (remoteItem: any) => ({
+        mapped: await mapRemoteToLocal(remoteItem),
+        serverId: remoteItem.id,
+      })),
+    );
+
+    await new Promise<void>((resolve, reject) => {
+      db.transaction(tx => {
+        try {
+          // Process remote items
+          processedRemoteItems.forEach(({mapped, serverId}) => {
+            const existing = localItems.find(l => l.server_id === serverId);
+
+            if (existing) {
+              const setClause = updateColumns
+                .map(col => `${col} = ?`)
+                .join(', ');
+              const versionValue = versionUpdate
+                ? existing.version + 1
+                : mapped.version;
+              const params = [
+                ...updateColumns.map(c => mapped[c]),
+                versionValue,
+                serverId,
+              ];
+
+              tx.executeSql(
+                `UPDATE ${tableName} SET ${setClause}, version = ? WHERE server_id = ?`,
+                params,
+              );
+            } else {
+              const placeholders = insertColumns.map(() => '?').join(', ');
+              const params = insertColumns.map(c => mapped[c]);
+
+              tx.executeSql(
+                `INSERT OR IGNORE INTO ${tableName} (${insertColumns.join(
+                  ', ',
+                )}) VALUES (${placeholders})`,
+                params,
+              );
+            }
+          });
+
+          // Preserve local unsynced items
+          localItems.forEach(localItem => {
+            if (!localItem.server_id) {
+              const columns = Object.keys(localItem).filter(
+                k => k !== 'server_id',
+              );
+              const placeholders = columns.map(() => '?').join(', ');
+              const params = columns.map(c => localItem[c]);
+
+              tx.executeSql(
+                `INSERT OR IGNORE INTO ${tableName} (${columns.join(
+                  ', ',
+                )}) VALUES (${placeholders})`,
+                params,
+              );
+            }
+          });
+
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+  } catch (error) {
+    console.error(`Sync failed for ${tableName}:`, error);
+    throw error;
+  }
+}

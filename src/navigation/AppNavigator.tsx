@@ -40,14 +40,6 @@ function TabNavigator() {
 }
 
 export const AppNavigator = () => (
-  // <Stack.Navigator>
-  //   {/* <Stack.Screen name="Contexts" component={ContextsListScreen} />
-  //   <Stack.Screen
-  //     name="Tasks"
-  //     component={TasksListScreen}
-  //     options={({route}) => ({title: route.params?.context.name || 'Tasks'})}
-  //   /> */}
-  // </Stack.Navigator>
   <NavigationContainer>
     <Stack.Navigator>
       <Stack.Screen
@@ -56,6 +48,11 @@ export const AppNavigator = () => (
         options={{headerShown: false}}
       />
       <Stack.Screen name="Contexts" component={ContextsListScreen} />
+      <Stack.Screen
+        name="Tasks"
+        component={TasksListScreen}
+        options={({route}) => ({title: route.params?.context.name || 'Tasks'})}
+      />
     </Stack.Navigator>
 
     <View style={styles.fabContainer}>
@@ -72,7 +69,7 @@ const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
     right: 20,
-    bottom: 80, // Adjust based on your tab bar height
+    bottom: 80,
     zIndex: 999,
   },
   fabButton: {
@@ -87,6 +84,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 32,
     fontWeight: '300',
-    marginTop: -4, // Adjust vertical alignment
+    marginTop: -4,
   },
 });

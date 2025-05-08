@@ -36,7 +36,7 @@ export const contextTaskApi = {
   createAssociation: (contextId: string, taskId: string) =>
     client.models.ContextTask.create({contextId, taskId}),
   deleteAssociation: (id: string) => client.models.ContextTask.delete({id}),
-  listAssociations: (filter?: any) => client.models.ContextTask.list(filter),
+  listAssociations: () => client.models.ContextTask.list(),
 };
 
 // Utility functions
