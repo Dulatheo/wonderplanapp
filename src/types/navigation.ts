@@ -1,6 +1,7 @@
 import {LocalContext} from './context';
 
 export type RootStackParamList = {
+  MainTabs: undefined;
   Contexts: undefined;
   Tasks: {context: LocalContext};
 };
