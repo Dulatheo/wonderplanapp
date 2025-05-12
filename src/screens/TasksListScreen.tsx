@@ -26,6 +26,7 @@ export const TasksListScreen = ({route}: Props) => {
     createTask({
       name: taskName.trim(),
       priority,
+      contextIds: [context.id],
     });
 
     setTaskName('');

@@ -24,3 +24,8 @@ export type LocalTask = {
   created_at: number; // Unix timestamp
   version: number; // For conflict resolution
 };
+
+export type LocalTaskWithDetails = LocalTask & {
+  context_names?: string;
+  project_name?: string;
+};

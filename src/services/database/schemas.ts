@@ -56,7 +56,7 @@ export const tables = [
   {
     name: 'contexts_tasks',
     sql: `
-        CREATE TABLE IF NOT EXISTS context_tasks (
+        CREATE TABLE IF NOT EXISTS contexts_tasks (
           id TEXT PRIMARY KEY,
           local_context_id TEXT NOT NULL,
           local_task_id TEXT NOT NULL,
@@ -114,16 +114,16 @@ export const indexes = [
 
   // Context-Tasks junction table indexes
   {
-    name: 'idx_context_tasks_context',
-    sql: 'CREATE INDEX IF NOT EXISTS idx_context_tasks_context ON context_tasks (local_context_id)',
+    name: 'idx_contexts_tasks_context',
+    sql: 'CREATE INDEX IF NOT EXISTS idx_contexts_tasks_context ON contexts_tasks (local_context_id)',
   },
   {
-    name: 'idx_context_tasks_task',
-    sql: 'CREATE INDEX IF NOT EXISTS idx_context_tasks_task ON context_tasks (local_task_id)',
+    name: 'idx_contexts_tasks_task',
+    sql: 'CREATE INDEX IF NOT EXISTS idx_contexts_tasks_task ON contexts_tasks (local_task_id)',
   },
   {
-    name: 'idx_context_tasks_status',
-    sql: 'CREATE INDEX IF NOT EXISTS idx_context_tasks_status ON context_tasks (status)',
+    name: 'idx_contexts_tasks_status',
+    sql: 'CREATE INDEX IF NOT EXISTS idx_contexts_tasks_status ON contexts_tasks (status)',
   },
 
   // Projects indexes

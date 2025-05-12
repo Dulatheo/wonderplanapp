@@ -8,14 +8,22 @@ export interface SyncTableConfig {
   updateColumns: string[];
   insertColumns: string[];
   versionUpdate?: boolean;
+  dependsOn?: string[];
+  isJoinTable?: boolean;
 }
+
+const SYNC_ORDER: Record<string, number> = {
+  projects: 1,
+  contexts: 1,
+  tasks: 2,
+  context_tasks: 3,
+};
 
 export const syncConfigs: SyncTableConfig[] = [
   {
     tableName: 'projects',
     apiList: projectApi.listProjects,
     mapRemoteToLocal: async remote => ({
-      id: `server_${remote.id}`,
       name: remote.name,
       status: 'synced',
       server_id: remote.id,
@@ -36,7 +44,6 @@ export const syncConfigs: SyncTableConfig[] = [
     tableName: 'contexts',
     apiList: contextApi.listContexts,
     mapRemoteToLocal: async remote => ({
-      id: `server_${remote.id}`,
       name: remote.name,
       status: 'synced',
       server_id: remote.id,
@@ -61,7 +68,6 @@ export const syncConfigs: SyncTableConfig[] = [
       const project = localProjects.find(p => p.server_id === remote.projectId);
 
       return {
-        id: `server_${remote.id}`,
         name: remote.name,
         priority: remote.priority,
         project_id: project?.id || null,
@@ -82,9 +88,11 @@ export const syncConfigs: SyncTableConfig[] = [
       'created_at',
       'version',
     ],
+    dependsOn: ['projects'],
+    isJoinTable: false,
   },
   {
-    tableName: 'context_tasks',
+    tableName: 'contexts_tasks',
     apiList: contextTaskApi.listAssociations,
     mapRemoteToLocal: async remote => {
       const [contexts, tasks] = await Promise.all([
@@ -100,7 +108,6 @@ export const syncConfigs: SyncTableConfig[] = [
       }
 
       return {
-        id: `server_${remote.id}`,
         local_context_id: context.id,
         local_task_id: task.id,
         server_id: remote.id,
@@ -130,5 +137,7 @@ export const syncConfigs: SyncTableConfig[] = [
       'version',
     ],
     versionUpdate: false,
+    dependsOn: ['contexts', 'tasks'],
+    isJoinTable: true,
   },
 ];

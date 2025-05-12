@@ -1,24 +1,17 @@
 import React, {useEffect, useState} from 'react';
 import {View, Text, FlatList, StyleSheet, TouchableOpacity} from 'react-native';
-import {
-  TaskWithDetails,
-  fetchTasksWithDetails,
-} from '../services/database/TaskWithDetails';
-import {getPriorityByValue} from '../types/task';
+import {getPriorityByValue, LocalTaskWithDetails} from '../types/task';
 import {formatTimestamp} from '../utilities/Date+Extension';
+import {useTasks} from '../hooks/useTasks';
 
 export const TodayScreen = () => {
-  const [tasks, setTasks] = useState<TaskWithDetails[]>([]);
-
-  useEffect(() => {
-    fetchTasksWithDetails().then(setTasks);
-  }, []);
+  const {tasksQuery} = useTasks();
 
   const toggleCheckbox = (id: string) => {
     console.log(id);
   };
 
-  const renderItem = ({item}: {item: TaskWithDetails}) => (
+  const renderItem = ({item}: {item: LocalTaskWithDetails}) => (
     <View style={styles.itemContainer}>
       <View style={styles.leftContent}>
         <TouchableOpacity
@@ -36,15 +29,15 @@ export const TodayScreen = () => {
 
       <View style={styles.rightContent}>
         <View style={[styles.tag]}>
-          <Text style={styles.tagText}>{item.project_name}</Text>
+          <Text style={styles.tagText}>{item.project_id ?? 'Inbox'}</Text>
         </View>
       </View>
     </View>
   );
-
+  console.log(tasksQuery.data);
   return (
     <FlatList
-      data={tasks}
+      data={tasksQuery.data || []}
       renderItem={renderItem}
       keyExtractor={item => item.id}
       contentContainerStyle={styles.listContainer}

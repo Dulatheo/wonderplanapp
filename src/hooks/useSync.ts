@@ -6,7 +6,6 @@ import {
   setOnlineStatus,
   processor,
 } from '../services/database';
-import {queryClient} from '../services/queryClient';
 
 export const useSync = () => {
   useEffect(() => {

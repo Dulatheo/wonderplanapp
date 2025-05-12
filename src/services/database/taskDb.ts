@@ -1,4 +1,4 @@
-import {PriorityValue, LocalTask} from '../../types/task';
+import {PriorityValue, LocalTask, LocalTaskWithDetails} from '../../types/task';
 import {db} from '../database';
 
 export const getAllTasks = async (): Promise<LocalTask[]> => {
@@ -19,6 +19,7 @@ export const getAllTasks = async (): Promise<LocalTask[]> => {
 export const getTasksByContext = async (
   contextId: string,
 ): Promise<LocalTask[]> => {
+  console.log('Fetching tasks by context');
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -29,6 +30,46 @@ export const getTasksByContext = async (
         [contextId],
         (_, result) => resolve(result.rows.raw()),
         (_, error) => reject(error),
+      );
+    });
+  });
+};
+
+export const fetchTasksWithDetails = async (): Promise<
+  LocalTaskWithDetails[]
+> => {
+  console.log('Fetching tasks with details');
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT 
+            tasks.*,
+            GROUP_CONCAT(contexts.name) AS context_names,
+            projects.name AS project_name
+         FROM tasks
+         LEFT JOIN contexts_tasks 
+           ON tasks.id = contexts_tasks.local_task_id 
+           AND contexts_tasks.status != 'deleted'
+         LEFT JOIN contexts 
+           ON contexts_tasks.local_context_id = contexts.id 
+           AND contexts.status != 'deleted'
+         LEFT JOIN projects 
+           ON tasks.project_id = projects.id 
+           AND projects.status != 'deleted'
+         WHERE tasks.status != 'deleted'
+         GROUP BY tasks.id;`,
+        [],
+        (_, {rows}) => {
+          // Ensure we always return an array
+          const result = (rows as any)._array || [];
+          resolve(result);
+        },
+        (_, error) => {
+          console.error('SQL Error:', error);
+          // Return empty array instead of rejecting
+          resolve([]);
+          return false;
+        },
       );
     });
   });
@@ -71,9 +112,9 @@ export const updateTaskPriorityTransaction = async (
 };
 
 export const createTaskTransaction = async (
-  contextId: string,
   name: string,
   priority: PriorityValue,
+  contextIds: string[],
 ): Promise<string> => {
   const taskId = `task_${Date.now()}`;
   const txId = `tx_${Date.now()}`;
@@ -97,10 +138,39 @@ export const createTaskTransaction = async (
 
         tx.executeSql(
           `INSERT INTO tasks 
-        (id, context_id, name, priority, created_at) 
-        VALUES (?, ?, ?, ?, ?)`,
-          [taskId, contextId, name, priority, Date.now()],
+        (id, name, priority, status, created_at, version) 
+        VALUES (?, ?, ?, ?, ?, ?)`,
+          [taskId, name, priority, 'pending', Date.now(), 1],
         );
+
+        contextIds.forEach(contextId => {
+          const associationId = `ctx_task_${Date.now()}_${contextId}`;
+          const assocTxId = `tx_${Date.now()}_${contextId}`;
+
+          tx.executeSql(
+            `INSERT INTO transactions 
+             (id, type, entityType, entityId, payload, createdAt) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+              assocTxId,
+              'create',
+              'contexts_tasks',
+              associationId,
+              JSON.stringify({
+                localContextId: contextId,
+                localTaskId: taskId,
+              }),
+              Date.now(),
+            ],
+          );
+
+          tx.executeSql(
+            `INSERT INTO contexts_tasks 
+             (id, local_context_id, local_task_id, status, created_at, version) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [associationId, contextId, taskId, 'pending', Date.now(), 1],
+          );
+        });
       },
       error => reject(error),
       () => resolve(),
