@@ -119,65 +119,116 @@ export const createTaskTransaction = async (
   const taskId = `task_${Date.now()}`;
   const txId = `tx_${Date.now()}`;
 
-  await new Promise<void>((resolve, reject) => {
-    db.transaction(
-      tx => {
-        tx.executeSql(
-          `INSERT INTO transactions 
-        (id, type, entityType, entityId, payload, createdAt) 
-        VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            txId,
-            'create',
-            'tasks',
-            taskId,
-            JSON.stringify({name, priority}),
-            Date.now(),
-          ],
-        );
-
-        tx.executeSql(
-          `INSERT INTO tasks 
-        (id, name, priority, status, created_at, version) 
-        VALUES (?, ?, ?, ?, ?, ?)`,
-          [taskId, name, priority, 'pending', Date.now(), 1],
-        );
-
-        contextIds.forEach(contextId => {
-          const associationId = `ctx_task_${Date.now()}_${contextId}`;
-          const assocTxId = `tx_${Date.now()}_${contextId}`;
-
+  try {
+    await new Promise<void>((resolve, reject) => {
+      db.transaction(
+        tx => {
+          // First, create the task record
           tx.executeSql(
-            `INSERT INTO transactions 
-             (id, type, entityType, entityId, payload, createdAt) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              assocTxId,
-              'create',
-              'contexts_tasks',
-              associationId,
-              JSON.stringify({
-                localContextId: contextId,
-                localTaskId: taskId,
-              }),
-              Date.now(),
-            ],
-          );
+            `INSERT INTO tasks 
+            (id, name, priority, status, created_at, version) 
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            [taskId, name, priority, 'pending', Date.now(), 1],
+            (_, result) => {
+              if (result.rowsAffected === 0) {
+                reject(new Error('Failed to create task record'));
+                return;
+              }
 
-          tx.executeSql(
-            `INSERT INTO contexts_tasks 
-             (id, local_context_id, local_task_id, status, created_at, version) 
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [associationId, contextId, taskId, 'pending', Date.now(), 1],
-          );
-        });
-      },
-      error => reject(error),
-      () => resolve(),
-    );
-  });
+              // Then create the transaction record
+              tx.executeSql(
+                `INSERT INTO transactions 
+                (id, type, entityType, entityId, payload, createdAt, status, retries) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  txId,
+                  'create',
+                  'tasks',
+                  taskId,
+                  JSON.stringify({name, priority}),
+                  Date.now(),
+                  'pending',
+                  0,
+                ],
+                (_, transResult) => {
+                  if (transResult.rowsAffected === 0) {
+                    reject(new Error('Failed to create transaction record'));
+                    return;
+                  }
 
-  return txId;
+                  // Finally, create the context associations if any
+                  if (contextIds && contextIds.length > 0) {
+                    contextIds.forEach(contextId => {
+                      const associationId = `ctx_task_${Date.now()}_${contextId}`;
+                      const assocTxId = `tx_${Date.now()}_${contextId}`;
+
+                      tx.executeSql(
+                        `INSERT INTO contexts_tasks 
+                        (id, local_context_id, local_task_id, status, created_at, version) 
+                        VALUES (?, ?, ?, ?, ?, ?)`,
+                        [
+                          associationId,
+                          contextId,
+                          taskId,
+                          'pending',
+                          Date.now(),
+                          1,
+                        ],
+                        (_, assocResult) => {
+                          if (assocResult.rowsAffected === 0) {
+                            console.warn(
+                              `Failed to create context association for context ${contextId}`,
+                            );
+                          }
+                        },
+                      );
+
+                      tx.executeSql(
+                        `INSERT INTO transactions 
+                        (id, type, entityType, entityId, payload, createdAt, status, retries) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                          assocTxId,
+                          'create',
+                          'contexts_tasks',
+                          associationId,
+                          JSON.stringify({
+                            local_context_id: contextId,
+                            local_task_id: taskId,
+                          }),
+                          Date.now(),
+                          'pending',
+                          0,
+                        ],
+                        (_, assocTxResult) => {
+                          if (assocTxResult.rowsAffected === 0) {
+                            console.warn(
+                              `Failed to create context association transaction for context ${contextId}`,
+                            );
+                          }
+                        },
+                      );
+                    });
+                  }
+                  resolve();
+                },
+              );
+            },
+          );
+        },
+        error => {
+          console.error('Transaction error:', error);
+          reject(error);
+        },
+        () => resolve(),
+      );
+    });
+
+    return txId;
+  } catch (error) {
+    console.error('Failed to create task transaction:', error);
+    throw error;
+  }
 };
 
 export const deleteTaskTransaction = async (

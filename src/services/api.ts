@@ -18,24 +18,71 @@ export const projectApi = {
 
 export const taskApi = {
   listTasks: () => client.models.Task.list(),
-  createTask: (name: string, priority: number, projectId?: string | null) =>
-    client.models.Task.create({name, priority, projectId: projectId || null}),
-  updateTask: (
+  createTask: async (
+    name: string,
+    priority: number,
+    projectId?: string | null,
+  ) => {
+    try {
+      console.log('Creating task with:', {name, priority, projectId});
+      const createInput = {
+        name,
+        priority,
+        ...(projectId ? {projectId} : {}), // Only include projectId if it exists
+      };
+      console.log('Create input:', createInput);
+      const result = await client.models.Task.create(createInput);
+      console.log('Amplify create task response:', result);
+      return {data: result};
+    } catch (error) {
+      console.error('Error creating task in Amplify:', error);
+      throw error;
+    }
+  },
+  updateTask: async (
     id: string,
     data: {
       name?: string;
       priority?: number;
       projectId?: string | null;
     },
-  ) => client.models.Task.update({id, ...data}),
+  ) => {
+    const updateInput = {
+      id,
+      ...data,
+      ...(data.projectId === null ? {} : {projectId: data.projectId}),
+    };
+    const result = await client.models.Task.update(updateInput);
+    return {data: result};
+  },
   deleteTask: (id: string) => client.models.Task.delete({id}),
 };
 
 // Context-Task Relationship API
 export const contextTaskApi = {
-  createAssociation: (contextId: string, taskId: string) =>
-    client.models.ContextTask.create({contextId, taskId}),
-  deleteAssociation: (id: string) => client.models.ContextTask.delete({id}),
+  createAssociation: async (contextId: string, taskId: string) => {
+    try {
+      console.log('Creating context-task association:', {contextId, taskId});
+      const result = await client.models.ContextTask.create({
+        contextId,
+        taskId,
+      });
+      console.log('Amplify create association response:', result);
+      return {data: result};
+    } catch (error) {
+      console.error('Error creating context-task association:', error);
+      throw error;
+    }
+  },
+  deleteAssociation: async (id: string) => {
+    try {
+      const result = await client.models.ContextTask.delete({id});
+      return {data: result};
+    } catch (error) {
+      console.error('Error deleting context-task association:', error);
+      throw error;
+    }
+  },
   listAssociations: () => client.models.ContextTask.list(),
 };
 

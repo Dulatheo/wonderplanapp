@@ -3,13 +3,17 @@ import SQLite from 'react-native-sqlite-storage';
 import {Alert} from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import {Transaction} from '../types/transaction';
-import {contextApi} from './api';
+import {contextApi, contextTaskApi, projectApi} from './api';
 import {queryClient} from './queryClient';
 import {getContexts} from './database/contextDb';
 import {TransactionProcessor} from './sync/TransactionProcessor';
 import {tables, indexes} from './database/schemas';
 import {taskApi} from './api';
-import {SyncTableConfig, syncConfigs} from './sync/SyncConfig';
+import {
+  DEPENDENCY_ORDER,
+  SyncTableConfig,
+  syncConfigs,
+} from './sync/SyncConfig';
 
 export const db = SQLite.openDatabase(
   {name: 'todo.db', location: 'default'},
@@ -115,6 +119,196 @@ const proccessTransaction = async () => {
   await processor.processPendingTransactions();
 };
 
+const BATCH_CONFIG = {
+  BATCH_SIZE: 50,
+  MAX_RETRIES: 3,
+  RETRY_DELAY: 1000, // ms
+};
+
+type RemoteData = {
+  projects: Awaited<ReturnType<typeof projectApi.listProjects>>['data'];
+  contexts: Awaited<ReturnType<typeof contextApi.listContexts>>['data'];
+  tasks: Awaited<ReturnType<typeof taskApi.listTasks>>['data'];
+  context_tasks: Awaited<
+    ReturnType<typeof contextTaskApi.listAssociations>
+  >['data'];
+};
+
+type LocalData = {
+  projects: Awaited<ReturnType<typeof getPendingLocalItems>>;
+  contexts: Awaited<ReturnType<typeof getPendingLocalItems>>;
+  tasks: Awaited<ReturnType<typeof getPendingLocalItems>>;
+  context_tasks: Awaited<ReturnType<typeof getPendingLocalItems>>;
+};
+
+// 2. Update the performInitialSync function
+export const performInitialSync2 = async (): Promise<void> => {
+  const dbTransaction = await new Promise<SQLite.Transaction>(resolve => {
+    db.transaction(resolve, error => {
+      throw new Error(`Transaction error: ${error}`);
+    });
+  });
+
+  try {
+    // Stage 1: Collect all remote data first
+    const remoteData: RemoteData = {
+      projects: (await projectApi.listProjects()).data,
+      contexts: (await contextApi.listContexts()).data,
+      tasks: (await taskApi.listTasks()).data,
+      context_tasks: (await contextTaskApi.listAssociations()).data,
+    };
+
+    // Stage 2: Get all local data
+    const localData: LocalData = {
+      projects: await getPendingLocalItems('projects'),
+      contexts: await getPendingLocalItems('contexts'),
+      tasks: await getPendingLocalItems('tasks'),
+      context_tasks: await getPendingLocalItems('context_tasks'),
+    };
+
+    // Stage 3: Process in dependency order within single transaction
+    await new Promise<void>((resolve, reject) => {
+      dbTransaction.executeSql(
+        'BEGIN TRANSACTION;',
+        [],
+        () => {
+          // Process tables sequentially using for..of
+          (async () => {
+            try {
+              for (const tableName of DEPENDENCY_ORDER) {
+                const config = syncConfigs.find(c => c.tableName === tableName);
+                if (!config) continue;
+
+                // Type-safe access to data
+                const remoteItems = remoteData[tableName as keyof RemoteData];
+                const localItems = localData[tableName as keyof LocalData];
+
+                // Process remote items
+                const processed = await Promise.all(
+                  remoteItems.map(async remoteItem => ({
+                    mapped: await config.mapRemoteToLocal(remoteItem),
+                    serverId: remoteItem.id,
+                  })),
+                );
+
+                // Update/Insert logic
+                for (const {mapped, serverId} of processed) {
+                  const existing = localItems.find(
+                    l => l.server_id === serverId,
+                  );
+
+                  if (existing) {
+                    const setClause = config.updateColumns
+                      .map(col => `${col} = ?`)
+                      .join(', ');
+                    const versionValue = config.versionUpdate
+                      ? existing.version + 1
+                      : mapped.version;
+                    const params = [
+                      ...config.updateColumns.map(c => mapped[c]),
+                      versionValue,
+                      serverId,
+                    ];
+
+                    await new Promise<void>((resolve, reject) => {
+                      dbTransaction.executeSql(
+                        `UPDATE ${tableName} SET ${setClause}, version = ? WHERE server_id = ?`,
+                        params,
+                        () => resolve(),
+                        (_, error) => {
+                          reject(error);
+                          return true;
+                        },
+                      );
+                    });
+                  } else {
+                    const placeholders = config.insertColumns
+                      .map(() => '?')
+                      .join(', ');
+                    const params = config.insertColumns.map(c => mapped[c]);
+
+                    await new Promise<void>((resolve, reject) => {
+                      dbTransaction.executeSql(
+                        `INSERT OR IGNORE INTO ${tableName} (${config.insertColumns.join(
+                          ', ',
+                        )}) VALUES (${placeholders})`,
+                        params,
+                        () => resolve(),
+                        (_, error) => {
+                          reject(error);
+                          return true;
+                        },
+                      );
+                    });
+                  }
+                }
+
+                // Preserve local unsynced items
+                for (const localItem of localItems) {
+                  if (!localItem.server_id) {
+                    const columns = Object.keys(localItem).filter(
+                      k => k !== 'server_id',
+                    );
+                    const placeholders = columns.map(() => '?').join(', ');
+                    const params = columns.map(c => localItem[c]);
+
+                    await new Promise<void>((resolve, reject) => {
+                      dbTransaction.executeSql(
+                        `INSERT OR IGNORE INTO ${tableName} (${columns.join(
+                          ', ',
+                        )}) VALUES (${placeholders})`,
+                        params,
+                        () => resolve(),
+                        (_, error) => {
+                          reject(error);
+                          return true;
+                        },
+                      );
+                    });
+                  }
+                }
+              }
+              resolve();
+            } catch (error) {
+              reject(error);
+            }
+          })();
+        },
+        error => reject(error),
+      );
+    });
+
+    // Commit with proper callback handling
+    await new Promise<void>((resolve, reject) => {
+      dbTransaction.executeSql(
+        'COMMIT;',
+        [],
+        (_, result) => resolve(),
+        (_, error) => {
+          reject(new Error(`Commit failed: ${error.message}`));
+          return true;
+        },
+      );
+    });
+  } catch (error) {
+    // Rollback with proper callback handling
+    await new Promise<void>((resolve, reject) => {
+      dbTransaction.executeSql(
+        'ROLLBACK;',
+        [],
+        (_, result) => resolve(),
+        (_, error) => {
+          reject(new Error(`Rollback failed: ${error.message}`));
+          return true;
+        },
+      );
+    });
+
+    console.error('Initial sync failed:', error);
+    throw error;
+  }
+};
+
 export const performInitialSync = async (): Promise<void> => {
   try {
     // Sync in dependency order
@@ -133,6 +327,28 @@ export async function getLocalItems(tableName: string): Promise<any[]> {
       tx.executeSql(
         `SELECT * FROM ${tableName}`,
         [],
+        (_, result) => {
+          const items: any[] = [];
+          for (let i = 0; i < result.rows.length; i++) {
+            items.push(result.rows.item(i));
+          }
+          resolve(items);
+        },
+        (_, error) => {
+          reject(error);
+          return false;
+        },
+      );
+    });
+  });
+}
+
+export async function getPendingLocalItems(tableName: string): Promise<any[]> {
+  return new Promise((resolve, reject) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        `SELECT * FROM transactions WHERE entityType = ? AND status = ?`,
+        [tableName, 'pending'],
         (_, result) => {
           const items: any[] = [];
           for (let i = 0; i < result.rows.length; i++) {

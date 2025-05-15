@@ -9,15 +9,14 @@ export interface SyncTableConfig {
   insertColumns: string[];
   versionUpdate?: boolean;
   dependsOn?: string[];
-  isJoinTable?: boolean;
 }
 
-const SYNC_ORDER: Record<string, number> = {
-  projects: 1,
-  contexts: 1,
-  tasks: 2,
-  context_tasks: 3,
-};
+export const DEPENDENCY_ORDER: SyncTableConfig['tableName'][] = [
+  'projects',
+  'contexts',
+  'tasks',
+  'contexts_tasks',
+];
 
 export const syncConfigs: SyncTableConfig[] = [
   {
@@ -89,7 +88,6 @@ export const syncConfigs: SyncTableConfig[] = [
       'version',
     ],
     dependsOn: ['projects'],
-    isJoinTable: false,
   },
   {
     tableName: 'contexts_tasks',
@@ -138,6 +136,5 @@ export const syncConfigs: SyncTableConfig[] = [
     ],
     versionUpdate: false,
     dependsOn: ['contexts', 'tasks'],
-    isJoinTable: true,
   },
 ];

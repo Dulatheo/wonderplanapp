@@ -19,7 +19,7 @@ const schema = a.schema({
     .model({
       name: a.string().required(),
       priority: a.integer().required(),
-      projectId: a.id(),
+      projectId: a.string(),
       project: a.belongsTo('Project', 'projectId'),
       contexts: a.hasMany('ContextTask', 'taskId'),
     })
@@ -34,8 +34,8 @@ const schema = a.schema({
 
   ContextTask: a
     .model({
-      contextId: a.id().required(),
-      taskId: a.id().required(),
+      contextId: a.string().required(),
+      taskId: a.string().required(),
       context: a.belongsTo('Context', 'contextId'),
       task: a.belongsTo('Task', 'taskId'),
     })

@@ -6,7 +6,7 @@ import {db, pendingTransactions} from '../database';
 export class TransactionProcessor {
   private async processTransaction(tx: Transaction) {
     const HandlerClass = handlers[tx.entityType as keyof HandlerMap];
-
+    console.log('STARTED TRANSACTION FOR ', tx.entityType);
     if (!HandlerClass) {
       throw new Error(`No handler for entity type: ${tx.entityType}`);
     }
@@ -19,6 +19,7 @@ export class TransactionProcessor {
         case 'create':
           const created = await HandlerClass.create(payload);
           serverId = created.id;
+          console.log('----> CREATED: ', serverId);
           break;
 
         case 'delete':
@@ -29,24 +30,34 @@ export class TransactionProcessor {
       await this.updateLocalState(tx, serverId);
       this.invalidateQueries(tx.entityType);
     } catch (error) {
-      await this.handleTransactionError(tx.id, error);
+      await this.handleTransactionError(
+        tx.id,
+        error,
+        tx.entityType,
+        tx.entityId,
+      );
       throw error;
     }
   }
 
   private async updateLocalState(tx: Transaction, serverId?: string) {
     await db.transaction(async sqlTx => {
+      console.log(
+        '----> UPDATING LOCAL STATE FOR: ',
+        tx.entityType,
+        serverId,
+        tx.entityId,
+      );
       if (tx.type === 'create' && serverId) {
-        await db.executeSql(
-          `UPDATE transactions SET status = 'committed' WHERE id = ?`,
-          [tx.id],
-        );
-
         await sqlTx.executeSql(
           `UPDATE ${tx.entityType} 
            SET server_id = ?, status = 'synced', version = version + 1 
            WHERE id = ?`,
           [serverId, tx.entityId],
+        );
+        await db.executeSql(
+          `UPDATE transactions SET status = 'committed' WHERE id = ?`,
+          [tx.id],
         );
       }
 
@@ -66,8 +77,16 @@ export class TransactionProcessor {
     queryClient.invalidateQueries({queryKey: [`${entityType}`]});
   }
 
-  private async handleTransactionError(txId: string, error: unknown) {
-    console.error(`Transaction ${txId} failed:`, error);
+  private async handleTransactionError(
+    txId: string,
+    error: unknown,
+    entityType: string,
+    entityId: string,
+  ) {
+    console.error(
+      `Transaction ${txId} in ${entityType} id: ${entityId} failed:`,
+      error,
+    );
     await db.executeSql(
       `UPDATE transactions SET retries = retries + 1 WHERE id = ?`,
       [txId],

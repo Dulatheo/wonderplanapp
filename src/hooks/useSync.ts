@@ -2,7 +2,7 @@ import {useEffect} from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import {
   initializeDatabase,
-  performInitialSync,
+  performInitialSync2,
   setOnlineStatus,
   processor,
 } from '../services/database';
@@ -14,7 +14,7 @@ export const useSync = () => {
     const initializeApp = async () => {
       try {
         await initializeDatabase();
-        await performInitialSync();
+        await performInitialSync2();
         await processor.processPendingTransactions();
 
         unsubscribe = NetInfo.addEventListener(state => {
