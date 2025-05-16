@@ -19,59 +19,65 @@ export const getAllTasks = async (): Promise<LocalTask[]> => {
 export const getTasksByContext = async (
   contextId: string,
 ): Promise<LocalTask[]> => {
-  console.log('Fetching tasks by context');
+  console.log('getTasksByContext - Fetching tasks by context:', contextId);
   return new Promise((resolve, reject) => {
-    db.transaction(tx => {
-      tx.executeSql(
-        `SELECT * FROM tasks 
-           WHERE context_id = ? 
-            AND status != 'deleted' 
-           ORDER BY priority ASC, created_at DESC`,
-        [contextId],
-        (_, result) => resolve(result.rows.raw()),
-        (_, error) => reject(error),
-      );
-    });
+    db.transaction(
+      tx => {
+        tx.executeSql(
+          `SELECT tasks.* FROM tasks
+         JOIN contexts_tasks ON tasks.id = contexts_tasks.local_task_id
+         WHERE contexts_tasks.local_context_id = ?
+           AND tasks.status != 'deleted'
+           AND contexts_tasks.status != 'deleted'
+         ORDER BY tasks.priority ASC, tasks.created_at DESC`,
+          [contextId],
+          (_, result) => resolve(result.rows.raw()),
+          (_, error) => {
+            console.log('getTasksByContext - SQL Error:', error);
+            reject(error);
+          },
+        );
+      },
+      error => {
+        console.log('getTasksByContext - Transaction Error:', error);
+        reject(error);
+      },
+    );
   });
 };
 
-export const fetchTasksWithDetails = async (): Promise<
-  LocalTaskWithDetails[]
-> => {
-  console.log('Fetching tasks with details');
+export const fetchTasksWithDetails = async (): Promise<LocalTask[]> => {
+  console.log('fetchTasksWithDetails: Fetching tasks with details');
   return new Promise((resolve, reject) => {
-    db.transaction(tx => {
-      tx.executeSql(
-        `SELECT 
+    db.transaction(
+      tx => {
+        tx.executeSql(
+          `SELECT 
             tasks.*,
             GROUP_CONCAT(contexts.name) AS context_names,
             projects.name AS project_name
          FROM tasks
          LEFT JOIN contexts_tasks 
-           ON tasks.id = contexts_tasks.local_task_id 
-           AND contexts_tasks.status != 'deleted'
+           ON tasks.id = contexts_tasks.local_task_id
          LEFT JOIN contexts 
-           ON contexts_tasks.local_context_id = contexts.id 
-           AND contexts.status != 'deleted'
+           ON contexts_tasks.local_context_id = contexts.id
          LEFT JOIN projects 
-           ON tasks.project_id = projects.id 
-           AND projects.status != 'deleted'
+           ON tasks.project_id = projects.id
          WHERE tasks.status != 'deleted'
          GROUP BY tasks.id;`,
-        [],
-        (_, {rows}) => {
-          // Ensure we always return an array
-          const result = (rows as any)._array || [];
-          resolve(result);
-        },
-        (_, error) => {
-          console.error('SQL Error:', error);
-          // Return empty array instead of rejecting
-          resolve([]);
-          return false;
-        },
-      );
-    });
+          [],
+          (_, result) => resolve(result.rows.raw()),
+          (_, error) => {
+            console.log('fetchTasksWithDetails - SQL Error:', error);
+            reject(error);
+          },
+        );
+      },
+      error => {
+        console.log('fetchTasksWithDetails - Transaction Error:', error);
+        reject(error);
+      },
+    );
   });
 };
 

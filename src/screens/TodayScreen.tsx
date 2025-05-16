@@ -34,7 +34,6 @@ export const TodayScreen = () => {
       </View>
     </View>
   );
-  console.log(tasksQuery.data);
   return (
     <FlatList
       data={tasksQuery.data || []}
