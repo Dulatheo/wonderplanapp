@@ -23,6 +23,7 @@ export const syncConfigs: SyncTableConfig[] = [
     tableName: 'projects',
     apiList: projectApi.listProjects,
     mapRemoteToLocal: async remote => ({
+      id: `proj_${Date.now()}_${remote.id}`,
       name: remote.name,
       status: 'synced',
       server_id: remote.id,
@@ -43,6 +44,7 @@ export const syncConfigs: SyncTableConfig[] = [
     tableName: 'contexts',
     apiList: contextApi.listContexts,
     mapRemoteToLocal: async remote => ({
+      id: `ctx_${Date.now()}_${remote.id}`,
       name: remote.name,
       status: 'synced',
       server_id: remote.id,
@@ -67,6 +69,7 @@ export const syncConfigs: SyncTableConfig[] = [
       const project = localProjects.find(p => p.server_id === remote.projectId);
 
       return {
+        id: `task_${Date.now()}_${remote.id}`,
         name: remote.name,
         priority: remote.priority,
         project_id: project?.id || null,
@@ -106,6 +109,7 @@ export const syncConfigs: SyncTableConfig[] = [
       }
 
       return {
+        id: `ctx_task_${Date.now()}_${remote.id}`,
         local_context_id: context.id,
         local_task_id: task.id,
         server_id: remote.id,

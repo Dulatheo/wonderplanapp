@@ -2,6 +2,7 @@ import {handlers, HandlerMap} from './handlers';
 import {Transaction} from '../../types/transaction';
 import {queryClient} from '../../services/queryClient';
 import {db, pendingTransactions} from '../database';
+import {DEPENDENCY_ORDER} from './SyncConfig';
 
 export class TransactionProcessor {
   private async processTransaction(tx: Transaction) {
@@ -95,9 +96,30 @@ export class TransactionProcessor {
 
   public async processPendingTransactions() {
     const transactions = await pendingTransactions.getPendingTransactions();
-
+    // Group transactions by entityType
+    const grouped: {[entityType: string]: Transaction[]} = {};
     for (const tx of transactions) {
-      await this.processTransaction(tx);
+      if (!grouped[tx.entityType]) grouped[tx.entityType] = [];
+      grouped[tx.entityType].push(tx);
+    }
+
+    // Process in dependency order
+    for (const entityType of DEPENDENCY_ORDER) {
+      const txs = grouped[entityType];
+      if (!txs) continue;
+      // Process all 'create' transactions for this entityType first
+      for (const tx of txs.filter(t => t.type === 'create')) {
+        await this.processTransaction(tx);
+      }
+    }
+    // After all dependency-ordered creates, process any remaining transactions (e.g., deletes, updates, or other types/entities)
+    for (const tx of transactions) {
+      if (
+        tx.type !== 'create' ||
+        !DEPENDENCY_ORDER.includes(tx.entityType as any)
+      ) {
+        await this.processTransaction(tx);
+      }
     }
   }
 }

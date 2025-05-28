@@ -129,7 +129,7 @@ type RemoteData = {
   projects: Awaited<ReturnType<typeof projectApi.listProjects>>['data'];
   contexts: Awaited<ReturnType<typeof contextApi.listContexts>>['data'];
   tasks: Awaited<ReturnType<typeof taskApi.listTasks>>['data'];
-  context_tasks: Awaited<
+  contexts_tasks: Awaited<
     ReturnType<typeof contextTaskApi.listAssociations>
   >['data'];
 };
@@ -138,175 +138,179 @@ type LocalData = {
   projects: Awaited<ReturnType<typeof getPendingLocalItems>>;
   contexts: Awaited<ReturnType<typeof getPendingLocalItems>>;
   tasks: Awaited<ReturnType<typeof getPendingLocalItems>>;
-  context_tasks: Awaited<ReturnType<typeof getPendingLocalItems>>;
+  contexts_tasks: Awaited<ReturnType<typeof getPendingLocalItems>>;
 };
 
 // 2. Update the performInitialSync function
 export const performInitialSync2 = async (): Promise<void> => {
-  const dbTransaction = await new Promise<SQLite.Transaction>(resolve => {
-    db.transaction(resolve, error => {
-      throw new Error(`Transaction error: ${error}`);
-    });
+  console.log('[performInitialSync2] Starting initial sync');
+
+  // 1. Fetch all remote and local data BEFORE starting the transaction
+  console.log('[performInitialSync2] Fetching remote data...');
+  const remoteData: RemoteData = {
+    projects: (await projectApi.listProjects()).data,
+    contexts: (await contextApi.listContexts()).data,
+    tasks: (await taskApi.listTasks()).data,
+    contexts_tasks: (await contextTaskApi.listAssociations()).data,
+  };
+  console.log('[performInitialSync2] Remote data fetched:', {
+    projects: remoteData.projects.length,
+    contexts: remoteData.contexts.length,
+    tasks: remoteData.tasks.length,
+    contexts_tasks: remoteData.contexts_tasks.length,
   });
 
-  try {
-    // Stage 1: Collect all remote data first
-    const remoteData: RemoteData = {
-      projects: (await projectApi.listProjects()).data,
-      contexts: (await contextApi.listContexts()).data,
-      tasks: (await taskApi.listTasks()).data,
-      context_tasks: (await contextTaskApi.listAssociations()).data,
-    };
+  console.log('[performInitialSync2] Fetching local data...');
+  const localData: LocalData = {
+    projects: await getPendingLocalItems('projects'),
+    contexts: await getPendingLocalItems('contexts'),
+    tasks: await getPendingLocalItems('tasks'),
+    contexts_tasks: await getPendingLocalItems('contexts_tasks'),
+  };
+  console.log('[performInitialSync2] Local data fetched:', {
+    projects: localData.projects.length,
+    contexts: localData.contexts.length,
+    tasks: localData.tasks.length,
+    contexts_tasks: localData.contexts_tasks.length,
+  });
 
-    // Stage 2: Get all local data
-    const localData: LocalData = {
-      projects: await getPendingLocalItems('projects'),
-      contexts: await getPendingLocalItems('contexts'),
-      tasks: await getPendingLocalItems('tasks'),
-      context_tasks: await getPendingLocalItems('context_tasks'),
-    };
-
-    // Stage 3: Process in dependency order within single transaction
-    await new Promise<void>((resolve, reject) => {
-      dbTransaction.executeSql(
-        'BEGIN TRANSACTION;',
-        [],
-        () => {
-          // Process tables sequentially using for..of
-          (async () => {
-            try {
-              for (const tableName of DEPENDENCY_ORDER) {
-                const config = syncConfigs.find(c => c.tableName === tableName);
-                if (!config) continue;
-
-                // Type-safe access to data
-                const remoteItems = remoteData[tableName as keyof RemoteData];
-                const localItems = localData[tableName as keyof LocalData];
-
-                // Process remote items
-                const processed = await Promise.all(
-                  remoteItems.map(async remoteItem => ({
-                    mapped: await config.mapRemoteToLocal(remoteItem),
-                    serverId: remoteItem.id,
-                  })),
-                );
-
-                // Update/Insert logic
-                for (const {mapped, serverId} of processed) {
-                  const existing = localItems.find(
-                    l => l.server_id === serverId,
-                  );
-
-                  if (existing) {
-                    const setClause = config.updateColumns
-                      .map(col => `${col} = ?`)
-                      .join(', ');
-                    const versionValue = config.versionUpdate
-                      ? existing.version + 1
-                      : mapped.version;
-                    const params = [
-                      ...config.updateColumns.map(c => mapped[c]),
-                      versionValue,
-                      serverId,
-                    ];
-
-                    await new Promise<void>((resolve, reject) => {
-                      dbTransaction.executeSql(
-                        `UPDATE ${tableName} SET ${setClause}, version = ? WHERE server_id = ?`,
-                        params,
-                        () => resolve(),
-                        (_, error) => {
-                          reject(error);
-                          return true;
-                        },
-                      );
-                    });
-                  } else {
-                    const placeholders = config.insertColumns
-                      .map(() => '?')
-                      .join(', ');
-                    const params = config.insertColumns.map(c => mapped[c]);
-
-                    await new Promise<void>((resolve, reject) => {
-                      dbTransaction.executeSql(
-                        `INSERT OR IGNORE INTO ${tableName} (${config.insertColumns.join(
-                          ', ',
-                        )}) VALUES (${placeholders})`,
-                        params,
-                        () => resolve(),
-                        (_, error) => {
-                          reject(error);
-                          return true;
-                        },
-                      );
-                    });
-                  }
-                }
-
-                // Preserve local unsynced items
-                for (const localItem of localItems) {
-                  if (!localItem.server_id) {
-                    const columns = Object.keys(localItem).filter(
-                      k => k !== 'server_id',
-                    );
-                    const placeholders = columns.map(() => '?').join(', ');
-                    const params = columns.map(c => localItem[c]);
-
-                    await new Promise<void>((resolve, reject) => {
-                      dbTransaction.executeSql(
-                        `INSERT OR IGNORE INTO ${tableName} (${columns.join(
-                          ', ',
-                        )}) VALUES (${placeholders})`,
-                        params,
-                        () => resolve(),
-                        (_, error) => {
-                          reject(error);
-                          return true;
-                        },
-                      );
-                    });
-                  }
-                }
-              }
-              resolve();
-            } catch (error) {
-              reject(error);
+  // 2. Do all DB work inside a single transaction callback (no async/await inside!)
+  await new Promise<void>((resolve, reject) => {
+    db.transaction(
+      tx => {
+        try {
+          for (const tableName of DEPENDENCY_ORDER) {
+            const config = syncConfigs.find(c => c.tableName === tableName);
+            if (!config) {
+              console.warn(
+                `[performInitialSync2] No config for table: ${tableName}`,
+              );
+              continue;
             }
-          })();
-        },
-        error => reject(error),
-      );
-    });
 
-    // Commit with proper callback handling
-    await new Promise<void>((resolve, reject) => {
-      dbTransaction.executeSql(
-        'COMMIT;',
-        [],
-        (_, result) => resolve(),
-        (_, error) => {
-          reject(new Error(`Commit failed: ${error.message}`));
-          return true;
-        },
-      );
-    });
-  } catch (error) {
-    // Rollback with proper callback handling
-    await new Promise<void>((resolve, reject) => {
-      dbTransaction.executeSql(
-        'ROLLBACK;',
-        [],
-        (_, result) => resolve(),
-        (_, error) => {
-          reject(new Error(`Rollback failed: ${error.message}`));
-          return true;
-        },
-      );
-    });
+            console.log(`[performInitialSync2] Processing table: ${tableName}`);
+            const remoteItems = remoteData[tableName as keyof RemoteData];
+            const localItems = localData[tableName as keyof LocalData];
+            if (!remoteItems) {
+              console.error(
+                `[performInitialSync2] remoteItems is undefined for table: ${tableName}`,
+              );
+              continue;
+            }
+            if (!localItems) {
+              console.error(
+                `[performInitialSync2] localItems is undefined for table: ${tableName}`,
+              );
+              continue;
+            }
+            console.log(
+              `[performInitialSync2] Remote items: ${remoteItems.length}, Local items: ${localItems.length}`,
+            );
 
-    console.error('Initial sync failed:', error);
-    throw error;
-  }
+            // Process remote items
+            remoteItems.forEach(remoteItem => {
+              config.mapRemoteToLocal(remoteItem).then(mapped => {
+                const serverId = remoteItem.id;
+                const existing = localItems.find(l => l.server_id === serverId);
+                if (existing) {
+                  const setClause = config.updateColumns
+                    .map(col => `${col} = ?`)
+                    .join(', ');
+                  const versionValue = config.versionUpdate
+                    ? existing.version + 1
+                    : mapped.version;
+                  const params = [
+                    ...config.updateColumns.map(c => mapped[c]),
+                    versionValue,
+                    serverId,
+                  ];
+                  console.log(
+                    `[performInitialSync2] Updating ${tableName} server_id=${serverId}`,
+                  );
+                  tx.executeSql(
+                    `UPDATE ${tableName} SET ${setClause}, version = ? WHERE server_id = ?`,
+                    params,
+                    undefined,
+                    (_, error) => {
+                      console.error(
+                        `[performInitialSync2] Update failed for ${tableName} server_id=${serverId}:`,
+                        error,
+                      );
+                      return true;
+                    },
+                  );
+                } else {
+                  const placeholders = config.insertColumns
+                    .map(() => '?')
+                    .join(', ');
+                  const params = config.insertColumns.map(c => mapped[c]);
+                  console.log(
+                    `[performInitialSync2] Inserting into ${tableName} server_id=${serverId}`,
+                  );
+                  tx.executeSql(
+                    `INSERT OR IGNORE INTO ${tableName} (${config.insertColumns.join(
+                      ', ',
+                    )}) VALUES (${placeholders})`,
+                    params,
+                    undefined,
+                    (_, error) => {
+                      console.error(
+                        `[performInitialSync2] Insert failed for ${tableName} server_id=${serverId}:`,
+                        error,
+                      );
+                      return true;
+                    },
+                  );
+                }
+              });
+            });
+
+            // Preserve local unsynced items
+            localItems.forEach(localItem => {
+              if (!localItem.server_id) {
+                const columns = Object.keys(localItem).filter(
+                  k => k !== 'server_id',
+                );
+                const placeholders = columns.map(() => '?').join(', ');
+                const params = columns.map(c => localItem[c]);
+                console.log(
+                  `[performInitialSync2] Preserving local unsynced item in ${tableName}`,
+                );
+                tx.executeSql(
+                  `INSERT OR IGNORE INTO ${tableName} (${columns.join(
+                    ', ',
+                  )}) VALUES (${placeholders})`,
+                  params,
+                  undefined,
+                  (_, error) => {
+                    console.error(
+                      `[performInitialSync2] Preserve local insert failed for ${tableName}:`,
+                      error,
+                    );
+                    return true;
+                  },
+                );
+              }
+            });
+          }
+          console.log(
+            '[performInitialSync2] All tables processed, resolving transaction.',
+          );
+          resolve();
+        } catch (error) {
+          console.error(
+            '[performInitialSync2] Error during table processing:',
+            error,
+          );
+          reject(error);
+        }
+      },
+      error => {
+        console.error('[performInitialSync2] Transaction error:', error);
+        reject(error);
+      },
+    );
+  });
 };
 
 export const performInitialSync = async (): Promise<void> => {
