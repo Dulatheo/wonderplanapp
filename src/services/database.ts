@@ -125,13 +125,32 @@ const BATCH_CONFIG = {
   RETRY_DELAY: 1000, // ms
 };
 
+// Add normalized types for remote data
+
+type NormalizedContext = {
+  id: string;
+  name: string;
+  createdAt: number | string;
+};
+type NormalizedTask = {
+  id: string;
+  name: string;
+  priority: number;
+  projectId: string | null;
+  createdAt: number | string;
+};
+type NormalizedContextTask = {
+  id: string;
+  contextId: string;
+  taskId: string;
+  createdAt: number | string;
+};
+
 type RemoteData = {
-  projects: Awaited<ReturnType<typeof projectApi.listProjects>>['data'];
-  contexts: Awaited<ReturnType<typeof contextApi.listContexts>>['data'];
-  tasks: Awaited<ReturnType<typeof taskApi.listTasks>>['data'];
-  contexts_tasks: Awaited<
-    ReturnType<typeof contextTaskApi.listAssociations>
-  >['data'];
+  projects: any[];
+  contexts: NormalizedContext[];
+  tasks: NormalizedTask[];
+  contexts_tasks: NormalizedContextTask[];
 };
 
 type LocalData = {
@@ -147,11 +166,40 @@ export const performInitialSync2 = async (): Promise<void> => {
 
   // 1. Fetch all remote and local data BEFORE starting the transaction
   console.log('[performInitialSync2] Fetching remote data...');
+
+  // --- Normalization helpers ---
+  function normalizeContext(remote: any) {
+    return {
+      id: remote.id,
+      name: remote.name ?? '',
+      createdAt: remote.createdAt ?? Date.now(),
+    };
+  }
+  function normalizeTask(remote: any) {
+    return {
+      id: remote.id,
+      name: remote.name ?? '',
+      priority: remote.priority ?? 1,
+      projectId: remote.projectId ?? remote.project_id ?? null,
+      createdAt: remote.createdAt ?? Date.now(),
+    };
+  }
+  function normalizeContextTask(remote: any) {
+    return {
+      id: remote.id,
+      contextId: remote.contextId ?? remote.server_context_id,
+      taskId: remote.taskId ?? remote.server_task_id,
+      createdAt: remote.createdAt ?? Date.now(),
+    };
+  }
+
   const remoteData: RemoteData = {
     projects: (await projectApi.listProjects()).data,
-    contexts: (await contextApi.listContexts()).data,
-    tasks: (await taskApi.listTasks()).data,
-    contexts_tasks: (await contextTaskApi.listAssociations()).data,
+    contexts: (await contextApi.listContexts()).data.map(normalizeContext),
+    tasks: (await taskApi.listTasks()).data.map(normalizeTask),
+    contexts_tasks: (await contextTaskApi.listAssociations()).data.map(
+      normalizeContextTask,
+    ),
   };
   console.log('[performInitialSync2] Remote data fetched:', {
     projects: remoteData.projects.length,
@@ -172,6 +220,28 @@ export const performInitialSync2 = async (): Promise<void> => {
     contexts: localData.contexts.length,
     tasks: localData.tasks.length,
     contexts_tasks: localData.contexts_tasks.length,
+  });
+
+  // Precompute all local IDs for contexts and tasks
+  const allLocalContexts = await getLocalItems('contexts');
+  const allLocalTasks = await getLocalItems('tasks');
+  const precomputedContextIds = new Map();
+  const precomputedTaskIds = new Map();
+  allLocalContexts.forEach(local => {
+    if (local.server_id) precomputedContextIds.set(local.server_id, local.id);
+  });
+  allLocalTasks.forEach(local => {
+    if (local.server_id) precomputedTaskIds.set(local.server_id, local.id);
+  });
+  remoteData.contexts.forEach(remote => {
+    if (!precomputedContextIds.has(remote.id)) {
+      precomputedContextIds.set(remote.id, `ctx_${remote.id}`);
+    }
+  });
+  remoteData.tasks.forEach(remote => {
+    if (!precomputedTaskIds.has(remote.id)) {
+      precomputedTaskIds.set(remote.id, `task_${remote.id}`);
+    }
   });
 
   // 2. Do all DB work inside a single transaction callback (no async/await inside!)
@@ -209,7 +279,56 @@ export const performInitialSync2 = async (): Promise<void> => {
 
             // Process remote items
             remoteItems.forEach(remoteItem => {
-              config.mapRemoteToLocal(remoteItem).then(mapped => {
+              let mappedPromise;
+              if (tableName === 'contexts') {
+                const localId = precomputedContextIds.get(remoteItem.id);
+                mappedPromise = Promise.resolve({
+                  id: localId,
+                  name: remoteItem.name,
+                  status: 'synced',
+                  server_id: remoteItem.id,
+                  created_at: new Date(remoteItem.createdAt).getTime(),
+                  version: 1,
+                });
+              } else if (tableName === 'tasks') {
+                const localId = precomputedTaskIds.get(remoteItem.id);
+                const allLocalProjects = localData.projects;
+                const project = remoteItem.projectId
+                  ? allLocalProjects.find(
+                      p => p.server_id === remoteItem.projectId,
+                    )
+                  : undefined;
+                mappedPromise = Promise.resolve({
+                  id: localId,
+                  name: remoteItem.name,
+                  priority: remoteItem.priority,
+                  project_id: project?.id || null,
+                  status: 'synced',
+                  server_id: remoteItem.id,
+                  created_at: new Date(remoteItem.createdAt).getTime(),
+                  version: 1,
+                });
+              } else if (tableName === 'contexts_tasks') {
+                const localContextId = precomputedContextIds.get(
+                  remoteItem.contextId,
+                );
+                const localTaskId = precomputedTaskIds.get(remoteItem.taskId);
+                mappedPromise = Promise.resolve({
+                  id: `ctx_task_${Date.now()}_${remoteItem.id}`,
+                  local_context_id: localContextId,
+                  local_task_id: localTaskId,
+                  server_id: remoteItem.id,
+                  server_context_id: remoteItem.contextId,
+                  server_task_id: remoteItem.taskId,
+                  status: 'synced',
+                  created_at: new Date(remoteItem.createdAt).getTime(),
+                  version: 1,
+                });
+              } else {
+                mappedPromise = config.mapRemoteToLocal(remoteItem);
+              }
+
+              mappedPromise.then(mapped => {
                 const serverId = remoteItem.id;
                 const existing = localItems.find(l => l.server_id === serverId);
                 if (existing) {
@@ -247,6 +366,14 @@ export const performInitialSync2 = async (): Promise<void> => {
                   console.log(
                     `[performInitialSync2] Inserting into ${tableName} server_id=${serverId}`,
                   );
+                  console.log(
+                    `[performInitialSync2] Columns: ${config.insertColumns.join(
+                      ', ',
+                    )}`,
+                  );
+                  console.log(
+                    `[performInitialSync2] Values: ${JSON.stringify(params)}`,
+                  );
                   tx.executeSql(
                     `INSERT OR IGNORE INTO ${tableName} (${config.insertColumns.join(
                       ', ',
@@ -275,6 +402,14 @@ export const performInitialSync2 = async (): Promise<void> => {
                 const params = columns.map(c => localItem[c]);
                 console.log(
                   `[performInitialSync2] Preserving local unsynced item in ${tableName}`,
+                );
+                console.log(
+                  `[performInitialSync2] Local Columns: ${columns.join(', ')}`,
+                );
+                console.log(
+                  `[performInitialSync2] Local Values: ${JSON.stringify(
+                    params,
+                  )}`,
                 );
                 tx.executeSql(
                   `INSERT OR IGNORE INTO ${tableName} (${columns.join(
@@ -326,6 +461,7 @@ export const performInitialSync = async (): Promise<void> => {
 };
 
 export async function getLocalItems(tableName: string): Promise<any[]> {
+  console.log(`[getLocalItems] Fetching items from ${tableName}`);
   return new Promise((resolve, reject) => {
     db.transaction(tx => {
       tx.executeSql(
@@ -336,9 +472,21 @@ export async function getLocalItems(tableName: string): Promise<any[]> {
           for (let i = 0; i < result.rows.length; i++) {
             items.push(result.rows.item(i));
           }
+          console.log(
+            `[getLocalItems] Found ${items.length} items in ${tableName}:`,
+            items.map(item => ({
+              id: item.id,
+              server_id: item.server_id,
+              status: item.status,
+            })),
+          );
           resolve(items);
         },
         (_, error) => {
+          console.error(
+            `[getLocalItems] Error fetching from ${tableName}:`,
+            error,
+          );
           reject(error);
           return false;
         },
