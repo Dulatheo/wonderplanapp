@@ -3,9 +3,33 @@ import {View, Text, FlatList, StyleSheet, TouchableOpacity} from 'react-native';
 import {getPriorityByValue, LocalTaskWithDetails} from '../types/task';
 import {formatTimestamp} from '../utilities/Date+Extension';
 import {useTasks} from '../hooks/useTasks';
+import {client} from '../services/amplify';
+import {queryClient} from '../services/queryClient';
+import {performInitialSync2} from '../services/database';
 
 export const TodayScreen = () => {
   const {tasksQuery} = useTasks();
+
+  useEffect(() => {
+    // Subscribe to Amplify Task changes
+    const sub = client.models.Task.observeQuery().subscribe({
+      next: async ({items, isSynced}) => {
+        if (isSynced) {
+          try {
+            await performInitialSync2();
+            queryClient.invalidateQueries({queryKey: ['tasks']});
+          } catch (error) {
+            console.error('Error syncing tasks:', error);
+          }
+        }
+      },
+      error: error => {
+        console.error('Error in Task subscription:', error);
+      },
+    });
+
+    return () => sub.unsubscribe();
+  }, []);
 
   const toggleCheckbox = (id: string) => {
     console.log(id);
@@ -34,6 +58,7 @@ export const TodayScreen = () => {
       </View>
     </View>
   );
+
   return (
     <FlatList
       data={tasksQuery.data || []}
