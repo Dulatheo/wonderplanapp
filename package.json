@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@aws-amplify/react-native": "^1.1.7",
+    "@aws-amplify/rtn-web-browser": "^1.1.4",
     "@aws-amplify/ui-react-native": "^2.5.1",
     "@react-native-async-storage/async-storage": "^1.21.0",
     "@react-native-community/netinfo": "^11.4.1",

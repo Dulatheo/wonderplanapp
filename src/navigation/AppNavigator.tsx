@@ -7,6 +7,7 @@ import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
 import {TodayScreen} from '../screens/TodayScreen';
 import {NavigationContainer} from '@react-navigation/native';
 import {ExploreScreen} from '../screens/ExploreScreen';
+import {AuthScreen} from '../screens/AuthScreen';
 
 // Create tab navigator
 const Tab = createBottomTabNavigator();
@@ -41,7 +42,12 @@ function TabNavigator() {
 
 export const AppNavigator = () => (
   <NavigationContainer>
-    <Stack.Navigator>
+    <Stack.Navigator initialRouteName="Auth">
+      <Stack.Screen
+        name="Auth"
+        component={AuthScreen}
+        options={{headerShown: false}}
+      />
       <Stack.Screen
         name="MainTabs"
         component={TabNavigator}
