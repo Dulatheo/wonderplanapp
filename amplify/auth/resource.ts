@@ -13,6 +13,13 @@ export const auth = defineAuth({
         clientSecret: secret('LOGINWITHGOOGLE_CLIENT_SECRET'),
         scopes: ['email'],
       },
+      signInWithApple: {
+        clientId: secret('APPLE_CLIENT_ID'),
+        keyId: secret('APPLE_KEY_ID'),
+        privateKey: secret('APPLE_PRIVATE_KEY'),
+        teamId: secret('APPLE_TEAM_ID'),
+        scopes: ['email'],
+      },
       callbackUrls: ['myapp://callback/'],
       logoutUrls: ['myapp://signout/'],
     },

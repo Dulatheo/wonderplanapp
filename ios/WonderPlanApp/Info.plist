@@ -48,5 +48,18 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>myapp://callback/</string>
+        <string>myapp://signout/</string>
+      </array>
+    </dict>
+  </array>
+
+  <key>NSUserTrackingUsageDescription</key>
+  <string>Used for sign in with Apple</string>
 </dict>
 </plist>

@@ -23,14 +23,14 @@ const schema = a.schema({
       project: a.belongsTo('Project', 'projectId'),
       contexts: a.hasMany('ContextTask', 'taskId'),
     })
-    .authorization(allow => [allow.guest()]),
+    .authorization(allow => [allow.owner()]),
 
   Context: a
     .model({
       name: a.string().required(),
       tasks: a.hasMany('ContextTask', 'contextId'),
     })
-    .authorization(allow => [allow.guest()]),
+    .authorization(allow => [allow.owner()]),
 
   ContextTask: a
     .model({
@@ -39,7 +39,7 @@ const schema = a.schema({
       context: a.belongsTo('Context', 'contextId'),
       task: a.belongsTo('Task', 'taskId'),
     })
-    .authorization(allow => [allow.guest()]),
+    .authorization(allow => [allow.owner()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

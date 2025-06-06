@@ -5,8 +5,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
+  Platform,
 } from 'react-native';
-import {signInWithRedirect, getCurrentUser} from 'aws-amplify/auth';
+import {signInWithRedirect, getCurrentUser, signOut} from 'aws-amplify/auth';
+import {Auth} from 'aws-amplify';
 import {useNavigation} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/navigation';
@@ -27,17 +29,32 @@ export const AuthScreen = () => {
         const user = await getCurrentUser();
         if (user) {
           console.log('User signed in:', user);
-          // Navigate to main app screen after successful sign in
-          navigation.reset({
-            index: 0,
-            routes: [{name: 'MainTabs'}],
-          });
+          // Navigation to MainTabs is now handled by AppNavigator based on auth state
         }
       } catch (error) {
         console.error('Error getting user in sign in with Google:', error);
       }
     } catch (error) {
       console.error('Error signing in with Google:', error);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      await signInWithRedirect({
+        provider: 'Apple',
+      });
+
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          console.log('User signed in with Apple:', user);
+        }
+      } catch (error) {
+        console.error('Error getting user in sign in with Apple:', error);
+      }
+    } catch (error) {
+      console.error('Error signing in with Apple:', error);
     }
   };
 
@@ -52,6 +69,14 @@ export const AuthScreen = () => {
           onPress={handleGoogleSignIn}>
           <Text style={styles.googleButtonText}>Sign in with Google</Text>
         </TouchableOpacity>
+
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={styles.appleButton}
+            onPress={handleAppleSignIn}>
+            <Text style={styles.appleButtonText}>Sign in with Apple</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -88,8 +113,22 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minWidth: 200,
     alignItems: 'center',
+    marginBottom: 16,
   },
   googleButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  appleButton: {
+    backgroundColor: '#000',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    minWidth: 200,
+    alignItems: 'center',
+  },
+  appleButtonText: {
     fontSize: 16,
     color: '#fff',
     fontWeight: '500',
