@@ -32,7 +32,6 @@ export default function App() {
 }
 
 function MainApp() {
-  useSync();
   return (
     <SafeAreaView style={{flex: 1}}>
       <AppNavigator />

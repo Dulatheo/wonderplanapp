@@ -13,7 +13,7 @@ const schema = a.schema({
       name: a.string().required(),
       tasks: a.hasMany('Task', 'projectId'),
     })
-    .authorization(allow => [allow.guest()]),
+    .authorization(allow => [allow.owner()]),
 
   Task: a
     .model({
@@ -47,7 +47,7 @@ export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({
   schema,
   authorizationModes: {
-    defaultAuthorizationMode: 'iam',
+    defaultAuthorizationMode: 'userPool',
   },
 });
 

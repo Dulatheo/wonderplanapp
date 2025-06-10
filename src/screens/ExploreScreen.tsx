@@ -1,6 +1,9 @@
 import React, {useEffect, useState} from 'react';
 import {View, Text, FlatList, StyleSheet, TouchableOpacity} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
+import {signOut} from 'aws-amplify/auth';
+import type {StackNavigationProp} from '@react-navigation/stack';
+import {RootStackParamList} from '../types/navigation';
 
 interface ExploreItem {
   id: string;
@@ -9,7 +12,7 @@ interface ExploreItem {
 }
 
 export const ExploreScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
 
   useEffect(() => {
     setItems;
@@ -33,19 +36,33 @@ export const ExploreScreen = () => {
     },
   ]);
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      // Do not navigate to 'Auth' here; AppNavigator will handle the switch
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
   return (
-    <FlatList
-      data={items}
-      renderItem={({item}) => (
-        <TouchableOpacity
-          style={styles.itemContainer}
-          onPress={() => navigation.navigate('Contexts')}>
-          <Text style={styles.title}>{item.name}</Text>
-        </TouchableOpacity>
-      )}
-      keyExtractor={item => item.id}
-      contentContainerStyle={styles.listContainer}
-    />
+    <View style={{flex: 1}}>
+      <FlatList
+        data={items}
+        renderItem={({item}) => (
+          <TouchableOpacity
+            style={styles.itemContainer}
+            onPress={() => navigation.navigate('Contexts')}>
+            <Text style={styles.title}>{item.name}</Text>
+          </TouchableOpacity>
+        )}
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.listContainer}
+      />
+      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+        <Text style={styles.signOutText}>Sign Out</Text>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -76,5 +93,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 8,
     color: '#333',
+  },
+  signOutButton: {
+    backgroundColor: '#e74c3c',
+    padding: 16,
+    borderRadius: 8,
+    margin: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signOutText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });

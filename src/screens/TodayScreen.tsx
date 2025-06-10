@@ -6,12 +6,20 @@ import {useTasks} from '../hooks/useTasks';
 import {client} from '../services/amplify';
 import {queryClient} from '../services/queryClient';
 import {performInitialSync2} from '../services/database';
+import {getCurrentUser} from 'aws-amplify/auth';
 
 export const TodayScreen = () => {
   const {tasksQuery} = useTasks();
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // Subscribe to Amplify Task changes
+    getCurrentUser()
+      .then(() => setReady(true))
+      .catch(() => setReady(false));
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
     const sub = client.models.Task.observeQuery().subscribe({
       next: async ({items, isSynced}) => {
         if (isSynced) {
@@ -29,7 +37,7 @@ export const TodayScreen = () => {
     });
 
     return () => sub.unsubscribe();
-  }, []);
+  }, [ready]);
 
   const toggleCheckbox = (id: string) => {
     console.log(id);

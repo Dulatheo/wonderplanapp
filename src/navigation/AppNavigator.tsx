@@ -10,6 +10,10 @@ import {ExploreScreen} from '../screens/ExploreScreen';
 import {AuthScreen} from '../screens/AuthScreen';
 import React, {useEffect, useState} from 'react';
 import {getCurrentUser, signOut} from 'aws-amplify/auth';
+import {Amplify} from 'aws-amplify';
+import outputs from '../../amplify_outputs.json';
+import {useSync} from '../hooks/useSync';
+import {Hub} from 'aws-amplify/utils';
 
 // Create tab navigator
 const Tab = createBottomTabNavigator();
@@ -38,36 +42,23 @@ function SearchScreen() {
 }
 
 function TabNavigator({userEmail, onSignOut}: TabNavigatorProps) {
+  useSync();
+
   return (
     <>
-      <View
-        style={{
-          padding: 8,
-          backgroundColor: '#f5f5f5',
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-        <Text style={{fontSize: 14, color: '#333'}}>
-          Signed in as: {userEmail}
-        </Text>
-        <TouchableOpacity
-          onPress={onSignOut}
-          style={{
-            marginLeft: 16,
-            backgroundColor: '#e74c3c',
-            padding: 8,
-            borderRadius: 6,
-          }}>
-          <Text style={{color: 'white', fontWeight: 'bold'}}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
       <Tab.Navigator>
         <Tab.Screen name="Today" component={TodayScreen} />
         <Tab.Screen name="Plan" component={PlanScreen} />
         <Tab.Screen name="Search" component={SearchScreen} />
         <Tab.Screen name="Explore" component={ExploreScreen} />
       </Tab.Navigator>
+      <View style={styles.fabContainer}>
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={() => console.log('Add pressed')}>
+          <Text style={styles.fabText}>+</Text>
+        </TouchableOpacity>
+      </View>
     </>
   );
 }
@@ -78,11 +69,13 @@ export const AppNavigator = () => {
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
+    Amplify.configure(outputs);
+
     const checkAuth = async () => {
       try {
         const user = await getCurrentUser();
         setIsAuthenticated(true);
-        setUserEmail(user?.signInDetails?.loginId || user?.username || null);
+        setUserEmail(user?.username || null);
         console.log('[AppNavigator] User is authenticated:', user);
       } catch (err) {
         setIsAuthenticated(false);
@@ -97,6 +90,21 @@ export const AppNavigator = () => {
       }
     };
     checkAuth();
+
+    const hubListenerCancelToken = Hub.listen('auth', ({payload}) => {
+      switch (payload.event) {
+        case 'signedIn':
+          console.log('user have been signedIn successfully.');
+          checkAuth();
+        case 'signedOut':
+          console.log('user have been signedOut successfully.');
+          checkAuth();
+      }
+    });
+
+    return () => {
+      hubListenerCancelToken();
+    };
   }, []);
 
   const handleSignOut = async () => {
@@ -142,14 +150,6 @@ export const AppNavigator = () => {
           })}
         />
       </Stack.Navigator>
-
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fabButton}
-          onPress={() => console.log('Add pressed')}>
-          <Text style={styles.fabText}>+</Text>
-        </TouchableOpacity>
-      </View>
     </NavigationContainer>
   );
 };

@@ -5,10 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  Platform,
 } from 'react-native';
-import {signInWithRedirect, getCurrentUser, signOut} from 'aws-amplify/auth';
-import {Auth} from 'aws-amplify';
+import {signInWithRedirect} from 'aws-amplify/auth';
 import {useNavigation} from '@react-navigation/native';
 import type {StackNavigationProp} from '@react-navigation/stack';
 import {RootStackParamList} from '../types/navigation';
@@ -23,17 +21,6 @@ export const AuthScreen = () => {
       await signInWithRedirect({
         provider: 'Google',
       });
-
-      try {
-        // After successful redirect, get the current user
-        const user = await getCurrentUser();
-        if (user) {
-          console.log('User signed in:', user);
-          // Navigation to MainTabs is now handled by AppNavigator based on auth state
-        }
-      } catch (error) {
-        console.error('Error getting user in sign in with Google:', error);
-      }
     } catch (error) {
       console.error('Error signing in with Google:', error);
     }
@@ -44,15 +31,6 @@ export const AuthScreen = () => {
       await signInWithRedirect({
         provider: 'Apple',
       });
-
-      try {
-        const user = await getCurrentUser();
-        if (user) {
-          console.log('User signed in with Apple:', user);
-        }
-      } catch (error) {
-        console.error('Error getting user in sign in with Apple:', error);
-      }
     } catch (error) {
       console.error('Error signing in with Apple:', error);
     }
@@ -61,8 +39,7 @@ export const AuthScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Welcome to WonderPlan</Text>
-        <Text style={styles.subtitle}>Your personal task manager</Text>
+        <Text style={styles.title}>WonderPlan App</Text>
 
         <TouchableOpacity
           style={styles.googleButton}
@@ -70,13 +47,11 @@ export const AuthScreen = () => {
           <Text style={styles.googleButtonText}>Sign in with Google</Text>
         </TouchableOpacity>
 
-        {Platform.OS === 'ios' && (
-          <TouchableOpacity
-            style={styles.appleButton}
-            onPress={handleAppleSignIn}>
-            <Text style={styles.appleButtonText}>Sign in with Apple</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.appleButton}
+          onPress={handleAppleSignIn}>
+          <Text style={styles.appleButtonText}>Sign in with Apple</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
