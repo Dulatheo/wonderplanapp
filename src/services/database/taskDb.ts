@@ -24,7 +24,7 @@ export const getTasksByContext = async (
     db.transaction(
       tx => {
         tx.executeSql(
-          `SELECT tasks.* FROM tasks
+          `SELECT DISTINCT tasks.* FROM tasks
          JOIN contexts_tasks ON tasks.id = contexts_tasks.local_task_id
          WHERE contexts_tasks.local_context_id = ?
            AND tasks.status != 'deleted'
