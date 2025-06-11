@@ -14,6 +14,7 @@ import {Amplify} from 'aws-amplify';
 import outputs from '../../amplify_outputs.json';
 import {useSync} from '../hooks/useSync';
 import {Hub} from 'aws-amplify/utils';
+import {clearLocalData} from '../services/database';
 
 // Create tab navigator
 const Tab = createBottomTabNavigator();
@@ -80,6 +81,7 @@ export const AppNavigator = () => {
       } catch (err) {
         setIsAuthenticated(false);
         setUserEmail(null);
+        await clearLocalData();
         console.log('[AppNavigator] No authenticated user:', err);
       } finally {
         setIsLoading(false);
@@ -109,9 +111,10 @@ export const AppNavigator = () => {
 
   const handleSignOut = async () => {
     await signOut();
+    await clearLocalData();
     setIsAuthenticated(false);
     setUserEmail(null);
-    console.log('[AppNavigator] User signed out');
+    console.log('[AppNavigator] User signed out and local data cleared');
   };
 
   if (isLoading) {

@@ -26,6 +26,33 @@ let isOnline = true;
 
 export const processor = new TransactionProcessor();
 
+export const clearLocalData = async () => {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      db.transaction(
+        tx => {
+          // Clear all tables
+          tx.executeSql('DELETE FROM tasks');
+          tx.executeSql('DELETE FROM contexts');
+          tx.executeSql('DELETE FROM projects');
+          tx.executeSql('DELETE FROM contexts_tasks');
+          tx.executeSql('DELETE FROM transactions');
+        },
+        error => {
+          console.error('Error clearing local data:', error);
+          reject(error);
+        },
+        () => {
+          console.log('Local data cleared successfully');
+          resolve();
+        },
+      );
+    });
+  } catch (error) {
+    console.error('Failed to clear local data:', error);
+  }
+};
+
 export const setOnlineStatus = (status: boolean) => {
   isOnline = status;
 };
