@@ -15,6 +15,7 @@ import outputs from '../../amplify_outputs.json';
 import {useSync} from '../hooks/useSync';
 import {Hub} from 'aws-amplify/utils';
 import {clearLocalData} from '../services/database';
+import CustomBottomBar from '../components/CustomBottomBar';
 
 // Create tab navigator
 const Tab = createBottomTabNavigator();
@@ -46,21 +47,12 @@ function TabNavigator({userEmail, onSignOut}: TabNavigatorProps) {
   useSync();
 
   return (
-    <>
-      <Tab.Navigator>
-        <Tab.Screen name="Today" component={TodayScreen} />
-        <Tab.Screen name="Plan" component={PlanScreen} />
-        <Tab.Screen name="Search" component={SearchScreen} />
-        <Tab.Screen name="Explore" component={ExploreScreen} />
-      </Tab.Navigator>
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fabButton}
-          onPress={() => console.log('Add pressed')}>
-          <Text style={styles.fabText}>+</Text>
-        </TouchableOpacity>
-      </View>
-    </>
+    <Tab.Navigator tabBar={props => <CustomBottomBar {...props} />}>
+      <Tab.Screen name="Today" component={TodayScreen} />
+      <Tab.Screen name="Plan" component={PlanScreen} />
+      <Tab.Screen name="Search" component={SearchScreen} />
+      <Tab.Screen name="Explore" component={ExploreScreen} />
+    </Tab.Navigator>
   );
 }
 
