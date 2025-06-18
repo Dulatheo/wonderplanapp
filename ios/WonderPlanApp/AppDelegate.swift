@@ -9,6 +9,14 @@ class AppDelegate: RCTAppDelegate {
     self.moduleName = "WonderPlanApp"
     self.dependencyProvider = RCTAppDependencyProvider()
 
+    // Print all font families and font names to the Xcode console
+    for family in UIFont.familyNames {
+        print("Family: \(family)")
+        for name in UIFont.fontNames(forFamilyName: family) {
+            print("  Font: \(name)")
+        }
+    }
+
     // You can add your custom initial props in the dictionary below.
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]

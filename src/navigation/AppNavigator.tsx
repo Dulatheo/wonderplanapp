@@ -3,7 +3,14 @@ import {ContextsListScreen} from '../screens/ContextsListScreen';
 import {TasksListScreen} from '../screens/TasksListScreen';
 import {RootStackParamList} from '../types/navigation';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
-import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  Image,
+} from 'react-native';
 import {TodayScreen} from '../screens/TodayScreen';
 import {NavigationContainer} from '@react-navigation/native';
 import {ExploreScreen} from '../screens/ExploreScreen';
@@ -16,6 +23,7 @@ import {useSync} from '../hooks/useSync';
 import {Hub} from 'aws-amplify/utils';
 import {clearLocalData} from '../services/database';
 import CustomBottomBar from '../components/CustomBottomBar';
+import {FONTS} from '../constants/fonts';
 
 // Create tab navigator
 const Tab = createBottomTabNavigator();
@@ -43,15 +51,122 @@ function SearchScreen() {
   );
 }
 
+const MenuButton = () => (
+  <TouchableOpacity style={styles.menuButton}>
+    <Image
+      source={require('../assets/icons/three-dots.png')}
+      style={styles.menuDots}
+    />
+  </TouchableOpacity>
+);
+
 function TabNavigator({userEmail, onSignOut}: TabNavigatorProps) {
   useSync();
 
   return (
-    <Tab.Navigator tabBar={props => <CustomBottomBar {...props} />}>
-      <Tab.Screen name="Today" component={TodayScreen} />
-      <Tab.Screen name="Plan" component={PlanScreen} />
-      <Tab.Screen name="Search" component={SearchScreen} />
-      <Tab.Screen name="Explore" component={ExploreScreen} />
+    <Tab.Navigator
+      tabBar={props => <CustomBottomBar {...props} />}
+      screenOptions={{
+        headerStyle: {
+          height: 104,
+          backgroundColor: '#FFFFFF',
+          elevation: 0, // Remove shadow on Android
+          shadowOpacity: 0, // Remove shadow on iOS
+        },
+        headerTitleStyle: {
+          fontSize: 24,
+          fontWeight: '600',
+          color: '#000000',
+          fontFamily: FONTS.PROXIMA.SEMIBOLD,
+          ...Platform.select({
+            ios: {
+              marginTop: -30, // Move the title up on iOS
+            },
+          }),
+        },
+        headerTitleAlign: 'left',
+        headerRight: () => <MenuButton />,
+        headerRightContainerStyle: {
+          paddingRight: 20,
+          ...Platform.select({
+            ios: {
+              marginTop: -30, // Match the title's position
+            },
+          }),
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontFamily: FONTS.PROXIMA.REGULAR,
+        },
+      }}>
+      <Tab.Screen
+        name="Today"
+        component={TodayScreen}
+        options={{
+          title: 'Today',
+          tabBarLabel: ({focused}) => (
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: FONTS.PROXIMA.REGULAR,
+                color: focused ? '#000000' : '#666666',
+              }}>
+              Today
+            </Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Plan"
+        component={PlanScreen}
+        options={{
+          title: 'Plan',
+          tabBarLabel: ({focused}) => (
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: FONTS.PROXIMA.REGULAR,
+                color: focused ? '#000000' : '#666666',
+              }}>
+              Plan
+            </Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Search"
+        component={SearchScreen}
+        options={{
+          title: 'Search',
+          tabBarLabel: ({focused}) => (
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: FONTS.PROXIMA.REGULAR,
+                color: focused ? '#000000' : '#666666',
+              }}>
+              Search
+            </Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Explore"
+        component={ExploreScreen}
+        options={{
+          title: 'Explore',
+          tabBarLabel: ({focused}) => (
+            <Text
+              style={{
+                fontSize: 12,
+                fontFamily: FONTS.PROXIMA.REGULAR,
+                color: focused ? '#000000' : '#666666',
+              }}>
+              Explore
+            </Text>
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -169,5 +284,13 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '300',
     marginTop: -4,
+  },
+  menuButton: {
+    width: 32,
+    height: 32,
+  },
+  menuDots: {
+    width: 32,
+    height: 32,
   },
 });

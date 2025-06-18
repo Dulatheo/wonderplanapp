@@ -15,7 +15,7 @@ const GRAY = '#A0A0A0';
 const TAB_COUNT = 4;
 const INDICATOR_WIDTH = 32;
 const INDICATOR_HEIGHT = 4;
-const CENTER_TAB_SPACE = 90; // must match styles.centerTabSpace.width
+const CENTER_TAB_SPACE = 90;
 
 type TabLabel = 'Today' | 'Plan' | 'Search' | 'Explore';
 

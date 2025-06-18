@@ -1,0 +1,33 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assets/fonts/ProximaNova-Light.ttf",
+      "sha1": "56cfa14b1b0aa628eec6c065e4806cdc43e717b2"
+    },
+    {
+      "path": "src/assets/fonts/ProximaNova-Reg.ttf",
+      "sha1": "e67ed4811ee88979eff8c33eb10880738b1ab300"
+    },
+    {
+      "path": "src/assets/fonts/ProximaNova-Sbold.ttf",
+      "sha1": "1878e1e5873e93a0970f85183c009f6d993bfd76"
+    },
+    {
+      "path": "src/assets/fonts/ProximaNova-Thin.ttf",
+      "sha1": "0331ee3216a69ca3167e9ad1f03d7f40322aea4b"
+    },
+    {
+      "path": "src/assets/fonts/proximanova-bold.otf",
+      "sha1": "07b2ff049401be086ff9bb6c9b812d9144e6d396"
+    },
+    {
+      "path": "src/assets/fonts/proximanova-boldit.otf",
+      "sha1": "30a17a102d268848896e0bbd34c8a6a0f0dd73ed"
+    },
+    {
+      "path": "src/assets/fonts/proximanova-regularit.otf",
+      "sha1": "666757b7d6196cfde150094c45b7c8eef466f4a4"
+    }
+  ]
+}
