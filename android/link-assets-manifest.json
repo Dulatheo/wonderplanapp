@@ -2,6 +2,10 @@
   "migIndex": 1,
   "data": [
     {
+      "path": "src/assets/fonts/Poppins/Poppins-Medium.ttf",
+      "sha1": "283f21b44efbdbf276ba802be2d949a36bbc4233"
+    },
+    {
       "path": "src/assets/fonts/ProximaNova-Light.ttf",
       "sha1": "56cfa14b1b0aa628eec6c065e4806cdc43e717b2"
     },
@@ -24,6 +28,10 @@
     {
       "path": "src/assets/fonts/proximanova-boldit.otf",
       "sha1": "30a17a102d268848896e0bbd34c8a6a0f0dd73ed"
+    },
+    {
+      "path": "src/assets/fonts/proximanova-medium.otf",
+      "sha1": "21f676f4d23726a3739d5f4b42bcd26040b87165"
     },
     {
       "path": "src/assets/fonts/proximanova-regularit.otf",

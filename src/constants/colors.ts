@@ -7,8 +7,8 @@ export const COLORS = {
 
   // Text colors
   TEXT: {
-    PRIMARY: '#000000',
-    SECONDARY: '#666666',
+    PRIMARY: '#202020',
+    SECONDARY: '#707070',
     DISABLED: '#999999',
   },
 

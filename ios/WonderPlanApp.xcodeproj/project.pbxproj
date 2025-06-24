@@ -11,6 +11,8 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		2C41D1808E8646189139B5E0 /* proximanova-boldit.otf in Resources */ = {isa = PBXBuildFile; fileRef = 538841953E304DF6855DBBDC /* proximanova-boldit.otf */; };
 		2CCEBE8E50452E63E8409E36 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		308EB983D834413289587EC0 /* proximanova-medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = ADFBF8FE3D8D4C8597BA13C7 /* proximanova-medium.otf */; };
+		40237740653B46FB91BBEC35 /* Poppins-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D8538B95DBDC42D7AA5285C3 /* Poppins-Medium.ttf */; };
 		687BA5143AD14954A7AE93A2 /* ProximaNova-Light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = DFF21017F1584E26A0EF6F8B /* ProximaNova-Light.ttf */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
@@ -37,6 +39,8 @@
 		8CF621FD8E0B4026ADF14B8F /* ProximaNova-Sbold.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ProximaNova-Sbold.ttf"; path = "../src/assets/fonts/ProximaNova-Sbold.ttf"; sourceTree = "<group>"; };
 		93CD16B389E042B6A940B082 /* ProximaNova-Thin.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ProximaNova-Thin.ttf"; path = "../src/assets/fonts/ProximaNova-Thin.ttf"; sourceTree = "<group>"; };
 		9666D8298A894A4DAE7C9AE2 /* ProximaNova-Reg.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ProximaNova-Reg.ttf"; path = "../src/assets/fonts/ProximaNova-Reg.ttf"; sourceTree = "<group>"; };
+		ADFBF8FE3D8D4C8597BA13C7 /* proximanova-medium.otf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "proximanova-medium.otf"; path = "../src/assets/fonts/proximanova-medium.otf"; sourceTree = "<group>"; };
+		D8538B95DBDC42D7AA5285C3 /* Poppins-Medium.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "Poppins-Medium.ttf"; path = "../src/assets/fonts/Poppins/Poppins-Medium.ttf"; sourceTree = "<group>"; };
 		DFF21017F1584E26A0EF6F8B /* ProximaNova-Light.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ProximaNova-Light.ttf"; path = "../src/assets/fonts/ProximaNova-Light.ttf"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -84,6 +88,8 @@
 				9666D8298A894A4DAE7C9AE2 /* ProximaNova-Reg.ttf */,
 				8CF621FD8E0B4026ADF14B8F /* ProximaNova-Sbold.ttf */,
 				93CD16B389E042B6A940B082 /* ProximaNova-Thin.ttf */,
+				ADFBF8FE3D8D4C8597BA13C7 /* proximanova-medium.otf */,
+				D8538B95DBDC42D7AA5285C3 /* Poppins-Medium.ttf */,
 			);
 			name = Resources;
 			path = "";
@@ -198,6 +204,8 @@
 				E1D09D62FC94478DA5BDDAF2 /* ProximaNova-Reg.ttf in Resources */,
 				B85AFD9162BD4ABD9D33815D /* ProximaNova-Sbold.ttf in Resources */,
 				B4AE271AFB1445309CFEE372 /* ProximaNova-Thin.ttf in Resources */,
+				308EB983D834413289587EC0 /* proximanova-medium.otf in Resources */,
+				40237740653B46FB91BBEC35 /* Poppins-Medium.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

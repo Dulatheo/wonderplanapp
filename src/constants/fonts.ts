@@ -7,6 +7,7 @@ export const FONTS = {
       Platform.OS === 'ios' ? 'ProximaNova-RegularIt' : 'proximanova-regularit',
     THIN: Platform.OS === 'ios' ? 'ProximaNovaT-Thin' : 'ProximaNova-Thin',
     LIGHT: Platform.OS === 'ios' ? 'ProximaNova-Light' : 'ProximaNova-Light',
+    MEDIUM: Platform.OS === 'ios' ? 'ProximaNova-Medium' : 'proximanova-medium',
     SEMIBOLD:
       Platform.OS === 'ios' ? 'ProximaNova-Semibold' : 'ProximaNova-Sbold',
     BOLD: Platform.OS === 'ios' ? 'ProximaNova-Bold' : 'proximanova-bold',

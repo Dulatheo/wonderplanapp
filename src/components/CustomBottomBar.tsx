@@ -1,4 +1,4 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
   View,
   TouchableOpacity,
@@ -9,6 +9,7 @@ import {
   Dimensions,
   Image,
 } from 'react-native';
+import CreateTaskModal from './CreateTaskModal';
 
 const NAVY = '#2E3A5B';
 const GRAY = '#A0A0A0';
@@ -59,6 +60,7 @@ const CustomBottomBar = ({state, navigation}: any) => {
   const indicatorAnim = useRef(new Animated.Value(state.index)).current;
   const tabBarWidth = Dimensions.get('window').width;
   const tabWidth = (tabBarWidth - CENTER_TAB_SPACE) / TAB_COUNT;
+  const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
     Animated.spring(indicatorAnim, {
@@ -129,7 +131,9 @@ const CustomBottomBar = ({state, navigation}: any) => {
       </View>
       {/* Center Plus Button */}
       <View style={styles.plusButtonWrapper} pointerEvents="box-none">
-        <TouchableOpacity style={styles.actionButton} onPress={() => {}}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => setModalVisible(true)}>
           <Image
             source={require('../assets/icons/tabs/floating-button-plus.png')}
             style={styles.plusIcon}
@@ -137,6 +141,10 @@ const CustomBottomBar = ({state, navigation}: any) => {
           />
         </TouchableOpacity>
       </View>
+      <CreateTaskModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+      />
     </View>
   );
 };
